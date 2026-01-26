@@ -43,7 +43,14 @@ TARBALL_DIR="${RPM_BUILD_ROOT}/${PACKAGE_NAME}-${VERSION}"
 mkdir -p "${TARBALL_DIR}/usr/bin"
 mkdir -p "${TARBALL_DIR}/usr/share/binsh/static"
 mkdir -p "${TARBALL_DIR}/usr/share/applications"
+mkdir -p "${TARBALL_DIR}/usr/share/icons/hicolor/16x16/apps"
+mkdir -p "${TARBALL_DIR}/usr/share/icons/hicolor/32x32/apps"
+mkdir -p "${TARBALL_DIR}/usr/share/icons/hicolor/48x48/apps"
+mkdir -p "${TARBALL_DIR}/usr/share/icons/hicolor/64x64/apps"
+mkdir -p "${TARBALL_DIR}/usr/share/icons/hicolor/128x128/apps"
 mkdir -p "${TARBALL_DIR}/usr/share/icons/hicolor/256x256/apps"
+mkdir -p "${TARBALL_DIR}/usr/share/icons/hicolor/512x512/apps"
+mkdir -p "${TARBALL_DIR}/usr/share/icons/hicolor/scalable/apps"
 mkdir -p "${TARBALL_DIR}/usr/share/doc/binsh"
 mkdir -p "${TARBALL_DIR}/usr/lib/systemd/user"
 
@@ -57,6 +64,19 @@ fi
 
 cp "${BUILD_DIR}/README.md" "${TARBALL_DIR}/usr/share/doc/binsh/"
 cp -r "${BUILD_DIR}/docs/"* "${TARBALL_DIR}/usr/share/doc/binsh/" 2>/dev/null || true
+
+# Copy icons
+ICONS_DIR="${BUILD_DIR}/assets/icons"
+if [ -d "${ICONS_DIR}" ]; then
+    cp "${ICONS_DIR}/binsh-16.png" "${TARBALL_DIR}/usr/share/icons/hicolor/16x16/apps/binsh.png" 2>/dev/null || true
+    cp "${ICONS_DIR}/binsh-32.png" "${TARBALL_DIR}/usr/share/icons/hicolor/32x32/apps/binsh.png" 2>/dev/null || true
+    cp "${ICONS_DIR}/binsh-48.png" "${TARBALL_DIR}/usr/share/icons/hicolor/48x48/apps/binsh.png" 2>/dev/null || true
+    cp "${ICONS_DIR}/binsh-64.png" "${TARBALL_DIR}/usr/share/icons/hicolor/64x64/apps/binsh.png" 2>/dev/null || true
+    cp "${ICONS_DIR}/binsh-128.png" "${TARBALL_DIR}/usr/share/icons/hicolor/128x128/apps/binsh.png" 2>/dev/null || true
+    cp "${ICONS_DIR}/binsh-256.png" "${TARBALL_DIR}/usr/share/icons/hicolor/256x256/apps/binsh.png" 2>/dev/null || true
+    cp "${ICONS_DIR}/binsh-512.png" "${TARBALL_DIR}/usr/share/icons/hicolor/512x512/apps/binsh.png" 2>/dev/null || true
+    cp "${ICONS_DIR}/binsh.svg" "${TARBALL_DIR}/usr/share/icons/hicolor/scalable/apps/binsh.svg" 2>/dev/null || true
+fi
 
 # Create desktop entry
 cat > "${TARBALL_DIR}/usr/share/applications/binsh.desktop" << EOF
@@ -89,13 +109,6 @@ Environment=BINSH_PORT=9876
 WantedBy=default.target
 EOF
 
-# Create SVG icon
-cat > "${TARBALL_DIR}/usr/share/icons/hicolor/256x256/apps/binsh.svg" << 'EOF'
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="32" fill="#1a1a2e"/>
-  <text x="128" y="160" font-family="monospace" font-size="120" font-weight="bold" fill="#00d4ff" text-anchor="middle">$_</text>
-</svg>
-EOF
 
 # Create tarball
 cd "${RPM_BUILD_ROOT}"
@@ -146,7 +159,14 @@ cp -r usr %{buildroot}/
 /usr/bin/binsh
 /usr/share/binsh/
 /usr/share/applications/binsh.desktop
-/usr/share/icons/hicolor/256x256/apps/binsh.svg
+/usr/share/icons/hicolor/16x16/apps/binsh.png
+/usr/share/icons/hicolor/32x32/apps/binsh.png
+/usr/share/icons/hicolor/48x48/apps/binsh.png
+/usr/share/icons/hicolor/64x64/apps/binsh.png
+/usr/share/icons/hicolor/128x128/apps/binsh.png
+/usr/share/icons/hicolor/256x256/apps/binsh.png
+/usr/share/icons/hicolor/512x512/apps/binsh.png
+/usr/share/icons/hicolor/scalable/apps/binsh.svg
 /usr/lib/systemd/user/binsh.service
 
 %post
