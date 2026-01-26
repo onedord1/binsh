@@ -292,15 +292,21 @@ func main() {
 
 	// Health check
 	api.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": "1.0.0"})
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": "1.0.0-beta"})
 	}).Methods("GET")
 
-	port := os.Getenv("SYSTASK_PORT")
+	// Serve static frontend files (SPA)
+	r.PathPrefix("/").Handler(spaHandler())
+
+	port := os.Getenv("BINSH_PORT")
+	if port == "" {
+		port = os.Getenv("SYSTASK_PORT")
+	}
 	if port == "" {
 		port = "9876"
 	}
 
-	fmt.Printf("🚀 binsh backend running on http://0.0.0.0:%s\n", port)
+	fmt.Printf("🚀 binsh running on http://localhost:%s\n", port)
 	fmt.Printf("📂 Data directory: %s\n", filepath.Join(os.Getenv("HOME"), ".config/binsh/data"))
 	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, r))
 }

@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Build artifacts
+backend/cmd/systask/static/
+backend/systask
+backend/systask-server
+backend/server.log
+*.deb
+*.rpm
+*.tar.gz
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
