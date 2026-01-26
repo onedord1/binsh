@@ -63,19 +63,21 @@ func NewClient(config *ConnectionConfig) (*Client, error) {
 		authMethods = append(authMethods, ssh.Password(config.Password))
 	}
 
+	var keyLoaded bool
 	if config.PrivateKeyPath != "" {
 		key, err := os.ReadFile(expandPath(config.PrivateKeyPath))
-		if err != nil {
-			return nil, fmt.Errorf("failed to read private key: %w", err)
+		if err == nil {
+			signer, err := ssh.ParsePrivateKey(key)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse private key: %w", err)
+			}
+			authMethods = append(authMethods, ssh.PublicKeys(signer))
+			keyLoaded = true
 		}
-		signer, err := ssh.ParsePrivateKey(key)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse private key: %w", err)
-		}
-		authMethods = append(authMethods, ssh.PublicKeys(signer))
+		// If path read fails, fall through to try inline key
 	}
 
-	if config.PrivateKey != "" {
+	if !keyLoaded && config.PrivateKey != "" {
 		signer, err := ssh.ParsePrivateKey([]byte(config.PrivateKey))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse inline private key: %w", err)

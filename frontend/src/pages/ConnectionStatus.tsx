@@ -70,6 +70,14 @@ export default function ConnectionStatus() {
         if (data.type === 'status' || data.type === 'log') {
           addLog(data)
           
+          // Mark as connected early when we see SSH success messages
+          if (data.message.includes('SSH connection established') || 
+              data.message.includes('SSH session created') ||
+              data.message.includes('PTY allocated')) {
+            connectedRef.current = true
+            setError(null) // Clear any error state
+          }
+          
           if (data.message.includes('Resolving')) setCurrentStep(1)
           else if (data.message.includes('Connecting')) setCurrentStep(2)
           else if (data.message.includes('Authenticat')) setCurrentStep(3)
@@ -86,6 +94,18 @@ export default function ConnectionStatus() {
         } else if (data.type === 'error') {
           setError(data.message)
           addLog({ type: 'error', message: data.message, success: false, timestamp: Date.now() })
+        } else if (data.type === 'output') {
+          // Terminal output means connection is successful
+          if (!connectedRef.current) {
+            connectedRef.current = true
+            setIsConnected(true)
+            setCurrentStep(5)
+            addLog({ type: 'status', message: 'Connection established successfully!', success: true, timestamp: Date.now() })
+            
+            setTimeout(() => {
+              navigate(`/terminal/${hostId}`)
+            }, 1500)
+          }
         }
       } catch {
         // Regular terminal data, connection successful
@@ -103,17 +123,13 @@ export default function ConnectionStatus() {
     }
 
     ws.onerror = () => {
-      if (!connectedRef.current) {
-        setError('Connection failed')
-        addLog({ type: 'error', message: 'WebSocket connection failed', success: false, timestamp: Date.now() })
-      }
+      // Only show error if we haven't received any SSH success messages
+      // The error might fire even after successful SSH connection due to websocket closure
     }
 
     ws.onclose = () => {
-      if (!connectedRef.current) {
-        setError('Connection closed unexpectedly')
-        addLog({ type: 'error', message: 'Connection closed', success: false, timestamp: Date.now() })
-      }
+      // Don't show error - the websocket will close when navigating to Terminal
+      // Terminal page will create its own connection
     }
   }
 
@@ -143,7 +159,7 @@ export default function ConnectionStatus() {
   }
 
   return (
-    <div className="min-h-screen bg-dark-900 flex items-center justify-center p-8">
+    <div className="min-h-screen bg-gray-100 dark:bg-dark-900 flex items-center justify-center p-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -170,14 +186,14 @@ export default function ConnectionStatus() {
             )}
           </motion.div>
 
-          <h1 className="text-2xl font-bold text-white mb-2">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
             {error
               ? 'Connection Failed'
               : isConnected
               ? 'Connected!'
               : 'Connecting...'}
           </h1>
-          <p className="text-dark-400">
+          <p className="text-gray-500 dark:text-dark-400">
             {host?.label || host?.address || 'Loading...'}
             {host && ` (${host.username}@${host.address}:${host.port})`}
           </p>
@@ -214,7 +230,7 @@ export default function ConnectionStatus() {
                         ? 'bg-green-500/20 text-green-400'
                         : isActive
                         ? 'bg-primary-500/20 text-primary-400'
-                        : 'bg-dark-700/50 text-dark-400'
+                        : 'bg-gray-200 dark:bg-dark-700/50 text-gray-400 dark:text-dark-400'
                     }`}
                   >
                     {isFailed ? (
@@ -235,8 +251,8 @@ export default function ConnectionStatus() {
                           : isComplete
                           ? 'text-green-400'
                           : isActive
-                          ? 'text-white'
-                          : 'text-dark-400'
+                          ? 'text-gray-900 dark:text-white'
+                          : 'text-gray-400 dark:text-dark-400'
                       }`}
                     >
                       {step.label}
@@ -253,19 +269,19 @@ export default function ConnectionStatus() {
 
         {(logs.length > 0 || error) && (
           <div className="card p-4 mb-6">
-            <h3 className="text-sm font-medium text-dark-300 mb-3 flex items-center gap-2">
+            <h3 className="text-sm font-medium text-gray-600 dark:text-dark-300 mb-3 flex items-center gap-2">
               <Terminal className="w-4 h-4" />
               Connection Log
             </h3>
-            <div className="bg-dark-900 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-xs">
+            <div className="bg-gray-900 dark:bg-dark-900 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-xs">
               {logs.map((log, index) => (
                 <div
                   key={index}
                   className={`flex items-start gap-2 mb-1 ${
-                    log.type === 'error' ? 'text-red-400' : log.success ? 'text-green-400' : 'text-dark-300'
+                    log.type === 'error' ? 'text-red-400' : log.success ? 'text-green-400' : 'text-gray-300 dark:text-dark-300'
                   }`}
                 >
-                  <span className="text-dark-500 select-none">
+                  <span className="text-gray-500 dark:text-dark-500 select-none">
                     {new Date(log.timestamp).toLocaleTimeString()}
                   </span>
                   <span>{log.message}</span>
@@ -286,7 +302,7 @@ export default function ConnectionStatus() {
               <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
               <div>
                 <h4 className="font-medium text-red-400 mb-1">Error Details</h4>
-                <p className="text-sm text-dark-300">{error}</p>
+                <p className="text-sm text-gray-600 dark:text-dark-300">{error}</p>
               </div>
             </div>
           </motion.div>

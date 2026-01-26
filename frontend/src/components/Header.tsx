@@ -9,6 +9,7 @@ import {
   FolderPlus,
   Terminal,
   Import,
+  Download,
   Cloud,
 } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
@@ -17,14 +18,15 @@ const quickActions = [
   { id: 'new-host', label: 'New Host', icon: Server, color: 'from-primary-500 to-accent-cyan' },
   { id: 'new-group', label: 'New Group', icon: FolderPlus, color: 'from-accent-purple to-accent-pink' },
   { id: 'terminal', label: 'Local Terminal', icon: Terminal, color: 'from-accent-green to-accent-cyan' },
-  { id: 'import', label: 'Import', icon: Import, color: 'from-accent-orange to-accent-pink' },
+  { id: 'import', label: 'Import Hosts', icon: Import, color: 'from-accent-orange to-accent-pink' },
+  { id: 'export', label: 'Export Hosts', icon: Download, color: 'from-green-500 to-accent-cyan' },
   { id: 'cloud', label: 'Cloud Sync', icon: Cloud, color: 'from-accent-cyan to-primary-500' },
 ]
 
 export default function Header() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { searchQuery, setSearchQuery, openHostPanel, openGroupPanel } = useAppStore()
+  const { searchQuery, setSearchQuery, openHostPanel, openGroupPanel, openImportModal, openExportModal, openCloudSyncModal } = useAppStore()
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -51,8 +53,13 @@ export default function Header() {
         navigate('/terminal/local')
         break
       case 'import':
+        openImportModal()
+        break
+      case 'export':
+        openExportModal()
         break
       case 'cloud':
+        openCloudSyncModal()
         break
     }
   }

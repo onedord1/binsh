@@ -12,6 +12,7 @@ interface AuthState {
   register: (email: string, password: string, name?: string) => Promise<void>
   logout: () => void
   checkAuth: () => Promise<void>
+  updateAvatar: (avatarId: string) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -78,6 +79,15 @@ export const useAuthStore = create<AuthState>()(
         } catch {
           get().logout()
           set({ isLoading: false })
+        }
+      },
+
+      updateAvatar: (avatarId: string) => {
+        const currentUser = get().user
+        if (currentUser) {
+          set({
+            user: { ...currentUser, avatar: avatarId }
+          })
         }
       },
     }),

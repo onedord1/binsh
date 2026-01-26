@@ -165,6 +165,12 @@ func main() {
 	protected.HandleFunc("/snippets/{id}", deleteSnippet).Methods("DELETE", "OPTIONS")
 
 	// ========================================
+	// Known Hosts
+	// ========================================
+	protected.HandleFunc("/known-hosts", getKnownHosts).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/known-hosts/{host}", removeKnownHost).Methods("DELETE", "OPTIONS")
+
+	// ========================================
 	// Port Forwarding
 	// ========================================
 	protected.HandleFunc("/portforwards", getPortForwards).Methods("GET", "OPTIONS")
@@ -230,10 +236,12 @@ func main() {
 	protected.HandleFunc("/actions/services/control", serviceControl).Methods("POST", "OPTIONS")
 
 	// User Management
-	// User Management
 	protected.HandleFunc("/actions/users", listUsers).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/actions/users/create", createUser).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/actions/users/delete", deleteUser).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/groups", listGroups).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/users/groups", getUserGroups).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/users/groups/modify", modifyUserGroups).Methods("POST", "OPTIONS")
 
 	// System Metrics
 	// System Metrics
@@ -244,17 +252,43 @@ func main() {
 	protected.HandleFunc("/actions/logs", getLogs).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/actions/logs/search", searchLogs).Methods("POST", "OPTIONS")
 
-	// Docker
-	// Docker
+	// Container Management (Docker/Podman)
+	protected.HandleFunc("/actions/containers/detect", detectContainerRuntime).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/containers/list", listContainersNew).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/containers/action", containerActionNew).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/containers/images", listContainerImages).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/containers/images/delete", deleteContainerImages).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/containers/prune", containerSystemPrune).Methods("POST", "OPTIONS")
+
+	// Legacy Docker routes (for backwards compatibility)
 	protected.HandleFunc("/actions/docker/containers", listContainers).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/actions/docker/container/{action}", containerAction).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/actions/docker/logs", containerLogs).Methods("POST", "OPTIONS")
 
 	// Network Diagnostics
-	// Network Diagnostics
 	protected.HandleFunc("/actions/network/ping", pingHost).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/actions/network/traceroute", tracerouteHost).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/actions/network/netstat", netstatHost).Methods("POST", "OPTIONS")
+
+	// System Logs
+	protected.HandleFunc("/actions/logs/syslog", getSyslog).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/logs/auth", getAuthLog).Methods("POST", "OPTIONS")
+
+	// Cron Jobs Management
+	protected.HandleFunc("/actions/cron/list", listCronJobs).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/cron/add", addCronJob).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/cron/delete", deleteCronJob).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/files/browse", browseDirectory).Methods("POST", "OPTIONS")
+
+	// Process Management
+	protected.HandleFunc("/actions/processes/list", listProcesses).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/processes/kill", killProcess).Methods("POST", "OPTIONS")
+
+	// Firewall Management
+	protected.HandleFunc("/actions/firewall/status", getFirewallStatus).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/firewall/add", addFirewallRule).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/firewall/delete", deleteFirewallRule).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/actions/firewall/toggle", toggleFirewall).Methods("POST", "OPTIONS")
 
 	// Health check
 	api.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -1045,6 +1079,176 @@ func deleteSnippet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ========================================
+// Known Hosts Handlers
+// ========================================
+
+type KnownHostEntry struct {
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	KeyType   string `json:"key_type"`
+	PublicKey string `json:"public_key"`
+}
+
+func getKnownHosts(w http.ResponseWriter, r *http.Request) {
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		http.Error(w, "Failed to get home directory", http.StatusInternalServerError)
+		return
+	}
+
+	knownHostsPath := filepath.Join(homeDir, ".ssh", "known_hosts")
+	content, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			json.NewEncoder(w).Encode([]KnownHostEntry{})
+			return
+		}
+		http.Error(w, "Failed to read known_hosts file", http.StatusInternalServerError)
+		return
+	}
+
+	var entries []KnownHostEntry
+	lines := strings.Split(string(content), "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.Fields(line)
+		if len(parts) < 3 {
+			continue
+		}
+
+		hostPart := parts[0]
+		keyType := parts[1]
+		publicKey := parts[2]
+
+		// Handle hashed hosts (starting with |1|)
+		if strings.HasPrefix(hostPart, "|1|") {
+			continue // Skip hashed entries as we can't display them
+		}
+
+		// Parse host and port
+		host := hostPart
+		port := 22
+
+		// Handle [host]:port format
+		if strings.HasPrefix(hostPart, "[") {
+			endBracket := strings.Index(hostPart, "]")
+			if endBracket > 0 {
+				host = hostPart[1:endBracket]
+				if len(hostPart) > endBracket+2 && hostPart[endBracket+1] == ':' {
+					portStr := hostPart[endBracket+2:]
+					if p, err := strconv.Atoi(portStr); err == nil {
+						port = p
+					}
+				}
+			}
+		} else if strings.Contains(hostPart, ",") {
+			// Handle host,ip format - take first part
+			host = strings.Split(hostPart, ",")[0]
+		}
+
+		entries = append(entries, KnownHostEntry{
+			Host:      host,
+			Port:      port,
+			KeyType:   keyType,
+			PublicKey: publicKey,
+		})
+	}
+
+	json.NewEncoder(w).Encode(entries)
+}
+
+func removeKnownHost(w http.ResponseWriter, r *http.Request) {
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	hostToRemove := vars["host"]
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		http.Error(w, "Failed to get home directory", http.StatusInternalServerError)
+		return
+	}
+
+	knownHostsPath := filepath.Join(homeDir, ".ssh", "known_hosts")
+	content, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		http.Error(w, "Failed to read known_hosts file", http.StatusInternalServerError)
+		return
+	}
+
+	lines := strings.Split(string(content), "\n")
+	var newLines []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		parts := strings.Fields(trimmed)
+		if len(parts) < 1 {
+			newLines = append(newLines, line)
+			continue
+		}
+
+		hostPart := parts[0]
+		shouldKeep := true
+
+		// Check if this line matches the host to remove
+		if strings.HasPrefix(hostPart, "[") {
+			endBracket := strings.Index(hostPart, "]")
+			if endBracket > 0 {
+				host := hostPart[1:endBracket]
+				if host == hostToRemove {
+					shouldKeep = false
+				}
+			}
+		} else if strings.Contains(hostPart, ",") {
+			hosts := strings.Split(hostPart, ",")
+			for _, h := range hosts {
+				if h == hostToRemove {
+					shouldKeep = false
+					break
+				}
+			}
+		} else if hostPart == hostToRemove {
+			shouldKeep = false
+		}
+
+		if shouldKeep {
+			newLines = append(newLines, line)
+		}
+	}
+
+	newContent := strings.Join(newLines, "\n")
+	if len(newLines) > 0 && !strings.HasSuffix(newContent, "\n") {
+		newContent += "\n"
+	}
+
+	if err := os.WriteFile(knownHostsPath, []byte(newContent), 0644); err != nil {
+		http.Error(w, "Failed to write known_hosts file", http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2567,6 +2771,7 @@ type actionRequest struct {
 	Action       string            `json:"action"`
 	Username     string            `json:"username"`
 	Options      map[string]string `json:"options"`
+	Groups       []string          `json:"groups"`
 	Target       string            `json:"target"`
 	Count        int               `json:"count"`
 	Lines        int               `json:"lines"`
@@ -2576,6 +2781,10 @@ type actionRequest struct {
 	All          bool              `json:"all"`
 	SudoPassword string            `json:"sudo_password"`
 	Stream       bool              `json:"stream"`
+	Runtime      string            `json:"runtime"`
+	ContainerID  string            `json:"container_id"`
+	ImageIDs     []string          `json:"image_ids"`
+	User         string            `json:"user"`
 }
 
 func getHostConfig(hostID, userID string) (*actions.HostConfig, error) {
@@ -2583,14 +2792,32 @@ func getHostConfig(hostID, userID string) (*actions.HostConfig, error) {
 	if err != nil || host == nil {
 		return nil, fmt.Errorf("host not found")
 	}
+
+	// Decrypt password if vault is unlocked
+	password := host.Password
+	if vaultService != nil && vaultService.IsUnlocked() && password != "" {
+		if decrypted, err := vaultService.Decrypt(password); err == nil {
+			password = decrypted
+		}
+	}
+
+	// Decrypt passphrase if vault is unlocked
+	passphrase := host.Passphrase
+	if vaultService != nil && vaultService.IsUnlocked() && passphrase != "" {
+		if decrypted, err := vaultService.Decrypt(passphrase); err == nil {
+			passphrase = decrypted
+		}
+	}
+
 	return &actions.HostConfig{
-		ID:       host.ID,
-		Label:    host.Label,
-		Address:  host.Address,
-		Port:     host.Port,
-		Username: host.Username,
-		Password: host.Password,
-		KeyPath:  host.SSHKeyPath,
+		ID:         host.ID,
+		Label:      host.Label,
+		Address:    host.Address,
+		Port:       host.Port,
+		Username:   host.Username,
+		Password:   password,
+		KeyPath:    host.SSHKeyPath,
+		Passphrase: passphrase,
 	}, nil
 }
 
@@ -3221,6 +3448,85 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
+func listGroups(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	groups, err := executor.ListGroups(hostConfig)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(groups)
+}
+
+func getUserGroups(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	groups, err := executor.GetUserGroups(hostConfig, req.Username)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"groups": groups})
+}
+
+func modifyUserGroups(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	result := executor.ModifyUserGroups(hostConfig, req.Username, req.Groups)
+	json.NewEncoder(w).Encode(result)
+}
+
 func getMetrics(w http.ResponseWriter, r *http.Request) {
 	var req actionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -3243,15 +3549,22 @@ func getMetrics(w http.ResponseWriter, r *http.Request) {
 
 	hostConfig, err := getHostConfig(req.HostID, userID)
 	if err != nil {
+		log.Printf("[DEBUG] getMetrics: Failed to get host config for hostID=%s: %v", req.HostID, err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
+	log.Printf("[DEBUG] getMetrics: Got hostConfig - Address=%s, Port=%d, Username=%s, HasPassword=%v, KeyPath=%s",
+		hostConfig.Address, hostConfig.Port, hostConfig.Username, hostConfig.Password != "", hostConfig.KeyPath)
+
 	metrics, err := executor.GetSystemMetrics(hostConfig)
 	if err != nil {
+		log.Printf("[DEBUG] getMetrics: GetSystemMetrics error: %v", err)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
 		return
 	}
+
+	log.Printf("[DEBUG] getMetrics: Success - Hostname=%s, CPU=%.1f, MemTotal=%d", metrics.Hostname, metrics.CPUUsage, metrics.MemoryTotal)
 
 	json.NewEncoder(w).Encode(metrics)
 }
@@ -3443,7 +3756,8 @@ func listContainers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	containers, err := executor.ListContainers(hostConfig, req.All)
+	runtime := "docker"
+	containers, err := executor.ListContainers(hostConfig, runtime)
 	if err != nil {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
 		return
@@ -3514,7 +3828,8 @@ func containerAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := executor.ContainerAction(hostConfig, req.ContainerID, action)
+	runtime := "docker"
+	result := executor.ContainerAction(hostConfig, runtime, req.ContainerID, action)
 	json.NewEncoder(w).Encode(result)
 }
 
@@ -3541,7 +3856,8 @@ func containerLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := executor.GetContainerLogs(hostConfig, req.ContainerID, req.Lines)
+	runtime := "docker"
+	result := executor.GetContainerLogs(hostConfig, runtime, req.ContainerID, req.Lines)
 	json.NewEncoder(w).Encode(result)
 }
 
@@ -3620,4 +3936,543 @@ func parseInt(s string, defaultVal int) int {
 		return v
 	}
 	return defaultVal
+}
+
+// ========================================
+// Container Management Handlers (New)
+// ========================================
+
+func detectContainerRuntime(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	runtime, err := executor.DetectContainerRuntime(hostConfig)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"installed": false, "error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"installed": true, "runtime": runtime})
+}
+
+func listContainersNew(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	runtime := req.Runtime
+	if runtime == "" {
+		runtime = "docker"
+	}
+
+	containers, err := executor.ListContainers(hostConfig, runtime)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(containers)
+}
+
+func containerActionNew(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	runtime := req.Runtime
+	if runtime == "" {
+		runtime = "docker"
+	}
+
+	result := executor.ContainerAction(hostConfig, runtime, req.ContainerID, req.Action)
+	json.NewEncoder(w).Encode(result)
+}
+
+func listContainerImages(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	runtime := req.Runtime
+	if runtime == "" {
+		runtime = "docker"
+	}
+
+	images, err := executor.ListContainerImages(hostConfig, runtime)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(images)
+}
+
+func deleteContainerImages(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	runtime := req.Runtime
+	if runtime == "" {
+		runtime = "docker"
+	}
+
+	result := executor.DeleteContainerImages(hostConfig, runtime, req.ImageIDs)
+	json.NewEncoder(w).Encode(result)
+}
+
+func containerSystemPrune(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	runtime := req.Runtime
+	if runtime == "" {
+		runtime = "docker"
+	}
+
+	result := executor.ContainerSystemPrune(hostConfig, runtime)
+	json.NewEncoder(w).Encode(result)
+}
+
+// ========================================
+// System Log Handlers
+// ========================================
+
+func getSyslog(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	lines := req.Lines
+	if lines <= 0 {
+		lines = 100
+	}
+
+	result := executor.GetSyslog(hostConfig, lines)
+	json.NewEncoder(w).Encode(result)
+}
+
+func getAuthLog(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	lines := req.Lines
+	if lines <= 0 {
+		lines = 100
+	}
+
+	result := executor.GetAuthLog(hostConfig, lines)
+	json.NewEncoder(w).Encode(result)
+}
+
+// ========================================
+// Cron Jobs Handlers
+// ========================================
+
+func listCronJobs(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	user := req.User
+	if user == "" {
+		user = "current"
+	}
+
+	jobs, err := executor.ListCronJobs(hostConfig, user)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(jobs)
+}
+
+func addCronJob(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		HostID  string `json:"host_id"`
+		User    string `json:"user"`
+		Minute  string `json:"minute"`
+		Hour    string `json:"hour"`
+		Day     string `json:"day"`
+		Month   string `json:"month"`
+		Weekday string `json:"weekday"`
+		Command string `json:"command"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	result := executor.AddCronJob(hostConfig, req.User, req.Minute, req.Hour, req.Day, req.Month, req.Weekday, req.Command)
+	json.NewEncoder(w).Encode(result)
+}
+
+func deleteCronJob(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		HostID     string `json:"host_id"`
+		User       string `json:"user"`
+		LineNumber int    `json:"line_number"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	result := executor.DeleteCronJob(hostConfig, req.User, req.LineNumber)
+	json.NewEncoder(w).Encode(result)
+}
+
+func browseDirectory(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		HostID string `json:"host_id"`
+		Path   string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	result := executor.ListDirectory(hostConfig, req.Path)
+	json.NewEncoder(w).Encode(result)
+}
+
+// ========================================
+// Process Management Handlers
+// ========================================
+
+func listProcesses(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		HostID string `json:"host_id"`
+		SortBy string `json:"sort_by"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	processes, err := executor.ListProcesses(hostConfig, req.SortBy)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(processes)
+}
+
+func killProcess(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		HostID string `json:"host_id"`
+		PID    string `json:"pid"`
+		Signal string `json:"signal"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	result := executor.KillProcess(hostConfig, req.PID, req.Signal)
+	json.NewEncoder(w).Encode(result)
+}
+
+// ========================================
+// Firewall Management Handlers
+// ========================================
+
+func getFirewallStatus(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	status, err := executor.GetFirewallStatus(hostConfig)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(status)
+}
+
+func addFirewallRule(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		HostID   string `json:"host_id"`
+		Port     string `json:"port"`
+		Protocol string `json:"protocol"`
+		FromIP   string `json:"from_ip"`
+		Action   string `json:"action"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	result := executor.AddFirewallRule(hostConfig, "", req.Port, req.Protocol, req.FromIP, req.Action)
+	json.NewEncoder(w).Encode(result)
+}
+
+func deleteFirewallRule(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		HostID     string `json:"host_id"`
+		RuleNumber int    `json:"rule_number"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	result := executor.DeleteFirewallRule(hostConfig, req.RuleNumber)
+	json.NewEncoder(w).Encode(result)
+}
+
+func toggleFirewall(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		HostID string `json:"host_id"`
+		Enable bool   `json:"enable"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	hostConfig, err := getHostConfig(req.HostID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	result := executor.ToggleFirewall(hostConfig, req.Enable)
+	json.NewEncoder(w).Encode(result)
 }

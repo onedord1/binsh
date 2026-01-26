@@ -18,6 +18,7 @@ import {
 import { hosts, getWebSocketUrl, getLocalShellUrl } from '../lib/api'
 import { useAppStore } from '../stores/appStore'
 import { terminalThemes, themeDisplayNames, darkThemes, lightThemes } from '../lib/terminalThemes'
+import QuickActions from '../components/terminal/QuickActions'
 import type { Host } from '../types'
 
 export default function Terminal() {
@@ -305,6 +306,15 @@ export default function Terminal() {
           style={{ backgroundColor: terminalThemes[currentTheme].background }}
         />
       </div>
+
+      {/* Quick Actions Panel - Only show when connected to remote server */}
+      {!isLocalShell && isConnected && (
+        <QuickActions
+          isConnected={isConnected}
+          wsRef={wsRef}
+          hostId={hostId}
+        />
+      )}
 
       {terminalZenMode && (
         <motion.div

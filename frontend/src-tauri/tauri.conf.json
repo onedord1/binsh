@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "SysTask - SSH Client",
+        "title": "#binsh",
         "width": 1280,
         "height": 800,
         "minWidth": 900,

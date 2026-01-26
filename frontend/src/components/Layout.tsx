@@ -2,6 +2,9 @@ import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import SidePanel from './SidePanel'
+import ImportModal from './modals/ImportModal'
+import ExportModal from './modals/ExportModal'
+import CloudSyncModal from './modals/CloudSyncModal'
 import { useAppStore } from '../stores/appStore'
 
 export default function Layout() {
@@ -22,6 +25,11 @@ export default function Layout() {
       </div>
 
       {sidePanel.type && <SidePanel />}
+      
+      {/* Global Modals */}
+      <ImportModal />
+      <ExportModal />
+      <CloudSyncModal />
     </div>
   )
 }

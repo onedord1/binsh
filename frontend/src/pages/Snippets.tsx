@@ -1,15 +1,17 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Code2, Plus, Trash2, Copy, Check } from 'lucide-react'
+import { Code2, Plus, Trash2, Copy, Check, Pencil, Terminal } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { snippets } from '../lib/api'
 import type { Snippet } from '../types'
 
 export default function Snippets() {
   const queryClient = useQueryClient()
-  const [showAddModal, setShowAddModal] = useState(false)
+  const [showModal, setShowModal] = useState(false)
+  const [editingSnippet, setEditingSnippet] = useState<Snippet | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<Snippet | null>(null)
   const [form, setForm] = useState({ label: '', content: '', description: '' })
 
   const { data: snippetList = [], isLoading } = useQuery<Snippet[]>({
@@ -21,11 +23,10 @@ export default function Snippets() {
     mutationFn: (data: Partial<Snippet>) => snippets.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['snippets'] })
-      toast.success('Snippet created')
-      setShowAddModal(false)
-      setForm({ label: '', content: '', description: '' })
+      toast.success(editingSnippet ? 'Snippet updated' : 'Snippet created')
+      closeModal()
     },
-    onError: () => toast.error('Failed to create snippet'),
+    onError: () => toast.error('Failed to save snippet'),
   })
 
   const deleteMutation = useMutation({
@@ -33,9 +34,27 @@ export default function Snippets() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['snippets'] })
       toast.success('Snippet deleted')
+      setDeleteConfirm(null)
     },
     onError: () => toast.error('Failed to delete snippet'),
   })
+
+  const openModal = (snippet?: Snippet) => {
+    if (snippet) {
+      setEditingSnippet(snippet)
+      setForm({ label: snippet.label, content: snippet.content, description: snippet.description || '' })
+    } else {
+      setEditingSnippet(null)
+      setForm({ label: '', content: '', description: '' })
+    }
+    setShowModal(true)
+  }
+
+  const closeModal = () => {
+    setShowModal(false)
+    setEditingSnippet(null)
+    setForm({ label: '', content: '', description: '' })
+  }
 
   const handleCopy = async (id: string, content: string) => {
     await navigator.clipboard.writeText(content)
@@ -68,7 +87,7 @@ export default function Snippets() {
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Snippets</h2>
           <p className="text-sm text-gray-500 dark:text-dark-400">Save frequently used commands</p>
         </div>
-        <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
+        <button onClick={() => openModal()} className="btn btn-primary">
           <Plus className="w-4 h-4" />
           Add Snippet
         </button>
@@ -87,7 +106,7 @@ export default function Snippets() {
           <p className="text-gray-500 dark:text-dark-400 mb-6 text-center max-w-md">
             Save your frequently used commands for quick access.
           </p>
-          <button onClick={() => setShowAddModal(true)} className="btn btn-primary btn-lg">
+          <button onClick={() => openModal()} className="btn btn-primary btn-lg">
             <Plus className="w-5 h-5" />
             Create Your First Snippet
           </button>
@@ -117,6 +136,7 @@ export default function Snippets() {
                   <button
                     onClick={() => handleCopy(snippet.id, snippet.content)}
                     className="p-2 rounded-lg text-gray-400 dark:text-dark-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-dark-700/50 transition-colors"
+                    title="Copy to clipboard"
                   >
                     {copiedId === snippet.id ? (
                       <Check className="w-4 h-4 text-green-400" />
@@ -125,12 +145,16 @@ export default function Snippets() {
                     )}
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm(`Delete "${snippet.label}"?`)) {
-                        deleteMutation.mutate(snippet.id)
-                      }
-                    }}
+                    onClick={() => openModal(snippet)}
+                    className="p-2 rounded-lg text-gray-400 dark:text-dark-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-dark-700/50 transition-colors"
+                    title="Edit snippet"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm(snippet)}
                     className="p-2 rounded-lg text-gray-400 dark:text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title="Delete snippet"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -144,15 +168,16 @@ export default function Snippets() {
         </div>
       )}
 
+      {/* Add/Edit Modal */}
       <AnimatePresence>
-        {showAddModal && (
+        {showModal && (
           <>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-gray-900/30 dark:bg-dark-950/60 backdrop-blur-sm z-40"
-              onClick={() => setShowAddModal(false)}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+              onClick={closeModal}
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -160,9 +185,17 @@ export default function Snippets() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 flex items-center justify-center z-50 p-4"
             >
-              <div className="w-full max-w-md bg-white dark:bg-dark-850 border border-gray-200 dark:border-dark-700/50 rounded-2xl shadow-2xl">
-                <div className="p-6 border-b border-dark-700/50">
-                  <h3 className="text-xl font-semibold text-white">Add Snippet</h3>
+              <div className="w-full max-w-lg bg-white dark:bg-dark-800 border border-gray-200 dark:border-dark-700 rounded-2xl shadow-2xl">
+                <div className="flex items-center gap-3 p-6 border-b border-gray-100 dark:border-dark-700">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-pink-500 flex items-center justify-center">
+                    <Terminal className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      {editingSnippet ? 'Edit Snippet' : 'Create Snippet'}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-dark-400">Save a command for quick access</p>
+                  </div>
                 </div>
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                   <div>
@@ -192,13 +225,13 @@ export default function Snippets() {
                       value={form.content}
                       onChange={(e) => setForm({ ...form, content: e.target.value })}
                       placeholder="cd /var/www && git pull && npm run build"
-                      className="input min-h-[100px] resize-none font-mono text-sm"
+                      className="input min-h-[120px] resize-none font-mono text-sm"
                     />
                   </div>
                   <div className="flex gap-3 pt-4">
                     <button
                       type="button"
-                      onClick={() => setShowAddModal(false)}
+                      onClick={closeModal}
                       className="btn btn-secondary flex-1"
                     >
                       Cancel
@@ -211,7 +244,7 @@ export default function Snippets() {
                       {createMutation.isPending ? (
                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                       ) : (
-                        'Create Snippet'
+                        editingSnippet ? 'Save Changes' : 'Create Snippet'
                       )}
                     </button>
                   </div>
@@ -219,6 +252,52 @@ export default function Snippets() {
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Dialog */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
+            onClick={() => setDeleteConfirm(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-dark-800 rounded-2xl p-6 w-full max-w-md shadow-2xl border border-gray-200 dark:border-dark-700"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+                  <Trash2 className="w-6 h-6 text-red-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Delete Snippet</h3>
+                  <p className="text-sm text-gray-500 dark:text-dark-400">This action cannot be undone</p>
+                </div>
+              </div>
+              <p className="text-gray-600 dark:text-dark-300 mb-6">
+                Are you sure you want to delete{' '}
+                <span className="font-semibold text-gray-900 dark:text-white">"{deleteConfirm.label}"</span>?
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteConfirm(null)} className="btn btn-secondary flex-1">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => deleteMutation.mutate(deleteConfirm.id)}
+                  className="btn bg-red-500 hover:bg-red-600 text-white flex-1"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

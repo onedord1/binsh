@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Host, Group, Keychain, Snippet, Settings, AuthResponse, User, PortForward } from '../types'
+import type { Host, Group, Keychain, Snippet, Settings, AuthResponse, User, PortForward, KnownHost } from '../types'
 
 const API_BASE = '/api'
 
@@ -114,6 +114,16 @@ export const snippets = {
   },
   delete: async (id: string): Promise<void> => {
     await api.delete(`/snippets/${id}`)
+  },
+}
+
+export const knownHosts = {
+  list: async (): Promise<KnownHost[]> => {
+    const { data } = await api.get('/known-hosts')
+    return data || []
+  },
+  remove: async (host: string): Promise<void> => {
+    await api.delete(`/known-hosts/${encodeURIComponent(host)}`)
   },
 }
 
@@ -256,6 +266,187 @@ export const sftp = {
       dest_host: destHost,
       dest_path: destPath,
     })
+  },
+}
+
+// Quick Actions API
+export const quickActions = {
+  // System Metrics
+  getMetrics: async (hostId: string) => {
+    const { data } = await api.post('/actions/metrics', { host_id: hostId })
+    return data
+  },
+
+  // Users
+  listUsers: async (hostId: string) => {
+    const { data } = await api.post('/actions/users', { host_id: hostId })
+    return data
+  },
+  createUser: async (hostId: string, username: string, options: Record<string, string>) => {
+    const { data } = await api.post('/actions/users/create', { host_id: hostId, username, options })
+    return data
+  },
+  deleteUser: async (hostId: string, username: string, removeHome: boolean = false) => {
+    const { data } = await api.post('/actions/users/delete', { host_id: hostId, username, remove_home: removeHome })
+    return data
+  },
+
+  // Groups
+  listGroups: async (hostId: string) => {
+    const { data } = await api.post('/actions/groups', { host_id: hostId })
+    return data
+  },
+  getUserGroups: async (hostId: string, username: string) => {
+    const { data } = await api.post('/actions/users/groups', { host_id: hostId, username })
+    return data
+  },
+  modifyUserGroups: async (hostId: string, username: string, groups: string[]) => {
+    const { data } = await api.post('/actions/users/groups/modify', { host_id: hostId, username, groups })
+    return data
+  },
+
+  // Services
+  listServices: async (hostId: string) => {
+    const { data } = await api.post('/actions/services', { host_id: hostId })
+    return data
+  },
+  controlService: async (hostId: string, service: string, action: string) => {
+    const { data } = await api.post('/actions/services/control', { host_id: hostId, service, action })
+    return data
+  },
+  getServiceLogs: async (hostId: string, service: string, lines: number = 50) => {
+    const { data } = await api.post('/actions/execute', { 
+      host_id: hostId, 
+      command: `journalctl -u ${service} -n ${lines} --no-pager` 
+    })
+    return data
+  },
+
+  // Package Management
+  detectPackageManager: async (hostId: string) => {
+    const { data } = await api.post('/actions/packages/detect', { host_id: hostId })
+    return data
+  },
+  updatePackages: async (hostId: string) => {
+    const { data } = await api.post('/actions/packages/update', { host_id: hostId })
+    return data
+  },
+  upgradePackages: async (hostId: string) => {
+    const { data } = await api.post('/actions/execute', { host_id: hostId, command: 'sudo apt upgrade -y || sudo dnf upgrade -y || sudo yum upgrade -y || sudo pacman -Syu --noconfirm' })
+    return data
+  },
+  installPackages: async (hostId: string, packages: string[]) => {
+    const { data } = await api.post('/actions/packages/install', { host_id: hostId, packages })
+    return data
+  },
+  listInstalledPackages: async (hostId: string) => {
+    const { data } = await api.post('/actions/execute', { 
+      host_id: hostId, 
+      command: 'dpkg --get-selections 2>/dev/null | grep -v deinstall | head -100 | awk \'{print $1}\' || rpm -qa --qf "%{NAME}\\n" 2>/dev/null | head -100 || pacman -Q 2>/dev/null | head -100 | awk \'{print $1}\'' 
+    })
+    return data
+  },
+
+  // Power
+  executeCommand: async (hostId: string, command: string) => {
+    const { data } = await api.post('/actions/execute', { host_id: hostId, command })
+    return data
+  },
+
+  // Container Management (Docker/Podman)
+  detectContainerRuntime: async (hostId: string) => {
+    const { data } = await api.post('/actions/containers/detect', { host_id: hostId })
+    return data
+  },
+  listContainers: async (hostId: string, runtime: string) => {
+    const { data } = await api.post('/actions/containers/list', { host_id: hostId, runtime })
+    return data
+  },
+  containerAction: async (hostId: string, runtime: string, containerId: string, action: string) => {
+    const { data } = await api.post('/actions/containers/action', { host_id: hostId, runtime, container_id: containerId, action })
+    return data
+  },
+  listContainerImages: async (hostId: string, runtime: string) => {
+    const { data } = await api.post('/actions/containers/images', { host_id: hostId, runtime })
+    return data
+  },
+  deleteContainerImages: async (hostId: string, runtime: string, imageIds: string[]) => {
+    const { data } = await api.post('/actions/containers/images/delete', { host_id: hostId, runtime, image_ids: imageIds })
+    return data
+  },
+  containerSystemPrune: async (hostId: string, runtime: string) => {
+    const { data } = await api.post('/actions/containers/prune', { host_id: hostId, runtime })
+    return data
+  },
+
+  // Network Diagnostics
+  ping: async (hostId: string, target: string, count: number = 4) => {
+    const { data } = await api.post('/actions/network/ping', { host_id: hostId, target, count })
+    return data
+  },
+  traceroute: async (hostId: string, target: string) => {
+    const { data } = await api.post('/actions/network/traceroute', { host_id: hostId, target })
+    return data
+  },
+  netstat: async (hostId: string) => {
+    const { data } = await api.post('/actions/network/netstat', { host_id: hostId })
+    return data
+  },
+
+  // System Logs
+  getSyslog: async (hostId: string, lines: number = 100) => {
+    const { data } = await api.post('/actions/logs/syslog', { host_id: hostId, lines })
+    return data
+  },
+  getAuthLog: async (hostId: string, lines: number = 100) => {
+    const { data } = await api.post('/actions/logs/auth', { host_id: hostId, lines })
+    return data
+  },
+
+  // Cron Jobs Management
+  listCronJobs: async (hostId: string, user: string = 'current') => {
+    const { data } = await api.post('/actions/cron/list', { host_id: hostId, user })
+    return data
+  },
+  addCronJob: async (hostId: string, user: string, minute: string, hour: string, day: string, month: string, weekday: string, command: string) => {
+    const { data } = await api.post('/actions/cron/add', { host_id: hostId, user, minute, hour, day, month, weekday, command })
+    return data
+  },
+  deleteCronJob: async (hostId: string, user: string, lineNumber: number) => {
+    const { data } = await api.post('/actions/cron/delete', { host_id: hostId, user, line_number: lineNumber })
+    return data
+  },
+  browseDirectory: async (hostId: string, path: string) => {
+    const { data } = await api.post('/actions/files/browse', { host_id: hostId, path })
+    return data
+  },
+
+  // Process Management
+  listProcesses: async (hostId: string, sortBy: string = 'cpu') => {
+    const { data } = await api.post('/actions/processes/list', { host_id: hostId, sort_by: sortBy })
+    return data
+  },
+  killProcess: async (hostId: string, pid: string, signal: string = 'TERM') => {
+    const { data } = await api.post('/actions/processes/kill', { host_id: hostId, pid, signal })
+    return data
+  },
+
+  // Firewall Management
+  getFirewallStatus: async (hostId: string) => {
+    const { data } = await api.post('/actions/firewall/status', { host_id: hostId })
+    return data
+  },
+  addFirewallRule: async (hostId: string, port: string, protocol: string, fromIP: string, action: string) => {
+    const { data } = await api.post('/actions/firewall/add', { host_id: hostId, port, protocol, from_ip: fromIP, action })
+    return data
+  },
+  deleteFirewallRule: async (hostId: string, ruleNumber: number) => {
+    const { data } = await api.post('/actions/firewall/delete', { host_id: hostId, rule_number: ruleNumber })
+    return data
+  },
+  toggleFirewall: async (hostId: string, enable: boolean) => {
+    const { data } = await api.post('/actions/firewall/toggle', { host_id: hostId, enable })
+    return data
   },
 }
 

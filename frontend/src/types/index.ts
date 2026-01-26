@@ -2,6 +2,7 @@ export interface User {
   id: string
   email: string
   name?: string
+  avatar?: string
   created_at: number
 }
 
@@ -51,6 +52,23 @@ export interface CloudConfig {
   secret_access_key?: string
   service?: string
   ip_address_type?: string
+  // GCP specific
+  project_id?: string
+  service_account_json?: string
+  // Azure specific
+  subscription_id?: string
+  tenant_id?: string
+  client_id?: string
+  client_secret?: string
+  resource_group?: string
+  // Oracle Cloud specific
+  tenancy_ocid?: string
+  user_ocid?: string
+  fingerprint?: string
+  private_key?: string
+  compartment_ocid?: string
+  // Linode/DigitalOcean specific
+  api_token?: string
 }
 
 export interface Keychain {
@@ -105,6 +123,13 @@ export interface ConnectionStatus {
   message: string
   success?: boolean
   timestamp: number
+}
+
+export interface KnownHost {
+  host: string
+  port: number
+  key_type: string
+  public_key: string
 }
 
 export interface AuthResponse {

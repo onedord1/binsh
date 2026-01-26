@@ -2,10 +2,10 @@ package actions
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -35,13 +35,14 @@ func NewExecutor() *Executor {
 
 // HostConfig represents host connection info
 type HostConfig struct {
-	ID       string
-	Label    string
-	Address  string
-	Port     int
-	Username string
-	Password string
-	KeyPath  string
+	ID         string
+	Label      string
+	Address    string
+	Port       int
+	Username   string
+	Password   string
+	KeyPath    string
+	Passphrase string
 }
 
 // ExecuteCommand runs a command on a single host
@@ -298,7 +299,8 @@ func (e *Executor) ListServices(host *HostConfig) ([]ServiceStatus, error) {
 	}
 
 	var services []ServiceStatus
-	re := regexp.MustCompile(`^(\S+\.service)\s+(\S+)\s+(\S+)\s+(\S+)`)
+	// Handle leading whitespace and optional bullet point (●) in systemctl output
+	re := regexp.MustCompile(`^\s*[●\s]*(\S+\.service)\s+(\S+)\s+(\S+)\s+(\S+)`)
 	for _, line := range strings.Split(result.Output, "\n") {
 		matches := re.FindStringSubmatch(line)
 		if len(matches) >= 5 {
@@ -396,6 +398,67 @@ func (e *Executor) DeleteUser(host *HostConfig, username string, removeHome bool
 	return e.ExecuteCommand(host, cmd)
 }
 
+// GroupInfo represents system group information
+type GroupInfo struct {
+	Name    string   `json:"name"`
+	GID     string   `json:"gid"`
+	Members []string `json:"members"`
+}
+
+// ListGroups lists all system groups
+func (e *Executor) ListGroups(host *HostConfig) ([]GroupInfo, error) {
+	result := e.ExecuteCommand(host, "cat /etc/group")
+	if !result.Success {
+		return nil, fmt.Errorf(result.Error)
+	}
+
+	var groups []GroupInfo
+	for _, line := range strings.Split(result.Output, "\n") {
+		parts := strings.Split(line, ":")
+		if len(parts) >= 4 {
+			members := []string{}
+			if parts[3] != "" {
+				members = strings.Split(parts[3], ",")
+			}
+			groups = append(groups, GroupInfo{
+				Name:    parts[0],
+				GID:     parts[2],
+				Members: members,
+			})
+		}
+	}
+
+	return groups, nil
+}
+
+// GetUserGroups gets all groups a user belongs to
+func (e *Executor) GetUserGroups(host *HostConfig, username string) ([]string, error) {
+	result := e.ExecuteCommand(host, fmt.Sprintf("groups %s", username))
+	if !result.Success {
+		return nil, fmt.Errorf(result.Error)
+	}
+
+	// Output format: "username : group1 group2 group3"
+	output := strings.TrimSpace(result.Output)
+	if idx := strings.Index(output, ":"); idx != -1 {
+		groupsStr := strings.TrimSpace(output[idx+1:])
+		if groupsStr != "" {
+			return strings.Fields(groupsStr), nil
+		}
+	}
+	return []string{}, nil
+}
+
+// ModifyUserGroups modifies a user's group memberships
+func (e *Executor) ModifyUserGroups(host *HostConfig, username string, groups []string) *ActionResult {
+	if len(groups) == 0 {
+		// Remove from all supplementary groups
+		return e.ExecuteCommand(host, fmt.Sprintf("sudo usermod -G '' %s", username))
+	}
+	groupsStr := strings.Join(groups, ",")
+	return e.ExecuteCommand(host, fmt.Sprintf("sudo usermod -G %s %s", groupsStr, username))
+}
+
 // ========================================
 // System Metrics Actions
 // ========================================
@@ -430,8 +493,12 @@ func (e *Executor) GetSystemMetrics(host *HostConfig) (*SystemMetrics, error) {
 	metrics := &SystemMetrics{}
 
 	// Hostname
-	if res := e.ExecuteCommand(host, "hostname"); res.Success {
+	res := e.ExecuteCommand(host, "hostname")
+	if res.Success {
 		metrics.Hostname = strings.TrimSpace(res.Output)
+	} else {
+		// Log first command failure to debug SSH connection issues
+		return nil, fmt.Errorf("failed to execute hostname command: %s", res.Error)
 	}
 
 	// IP Address
@@ -572,23 +639,47 @@ func (e *Executor) GetRecentLogs(host *HostConfig, logType string, lines int) ([
 // Docker Actions
 // ========================================
 
-// ContainerInfo represents Docker container information
+// ContainerInfo represents Docker/Podman container information
 type ContainerInfo struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Image   string `json:"image"`
 	Status  string `json:"status"`
+	State   string `json:"state"`
 	Ports   string `json:"ports"`
 	Created string `json:"created"`
 }
 
-// ListContainers lists Docker containers
-func (e *Executor) ListContainers(host *HostConfig, all bool) ([]ContainerInfo, error) {
-	cmd := "docker ps --format '{{json .}}'"
-	if all {
-		cmd = "docker ps -a --format '{{json .}}'"
-	}
+// ContainerImage represents Docker/Podman image information
+type ContainerImage struct {
+	ID         string `json:"id"`
+	Repository string `json:"repository"`
+	Tag        string `json:"tag"`
+	Size       string `json:"size"`
+	Created    string `json:"created"`
+}
 
+// DetectContainerRuntime checks if docker or podman is installed
+func (e *Executor) DetectContainerRuntime(host *HostConfig) (string, error) {
+	// Try docker first
+	result := e.ExecuteCommand(host, "which docker && docker --version")
+	if result.Success && strings.Contains(result.Output, "Docker") {
+		return "docker", nil
+	}
+	// Try podman
+	result = e.ExecuteCommand(host, "which podman && podman --version")
+	if result.Success && strings.Contains(result.Output, "podman") {
+		return "podman", nil
+	}
+	return "", fmt.Errorf("no container runtime found")
+}
+
+// ListContainers lists Docker/Podman containers
+func (e *Executor) ListContainers(host *HostConfig, runtime string) ([]ContainerInfo, error) {
+	if runtime == "" {
+		runtime = "docker"
+	}
+	cmd := fmt.Sprintf("%s ps -a --format '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.State}}|{{.Ports}}|{{.CreatedAt}}'", runtime)
 	result := e.ExecuteCommand(host, cmd)
 	if !result.Success {
 		return nil, fmt.Errorf(result.Error)
@@ -596,26 +687,28 @@ func (e *Executor) ListContainers(host *HostConfig, all bool) ([]ContainerInfo, 
 
 	var containers []ContainerInfo
 	for _, line := range strings.Split(result.Output, "\n") {
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		var info struct {
-			ID      string `json:"ID"`
-			Names   string `json:"Names"`
-			Image   string `json:"Image"`
-			Status  string `json:"Status"`
-			Ports   string `json:"Ports"`
-			Created string `json:"CreatedAt"`
-		}
-		if err := json.Unmarshal([]byte(line), &info); err == nil {
-			containers = append(containers, ContainerInfo{
-				ID:      info.ID,
-				Name:    info.Names,
-				Image:   info.Image,
-				Status:  info.Status,
-				Ports:   info.Ports,
-				Created: info.Created,
-			})
+		parts := strings.Split(line, "|")
+		if len(parts) >= 4 {
+			container := ContainerInfo{
+				ID:     parts[0],
+				Name:   parts[1],
+				Image:  parts[2],
+				Status: parts[3],
+			}
+			if len(parts) >= 5 {
+				container.State = parts[4]
+			}
+			if len(parts) >= 6 {
+				container.Ports = parts[5]
+			}
+			if len(parts) >= 7 {
+				container.Created = parts[6]
+			}
+			containers = append(containers, container)
 		}
 	}
 
@@ -623,17 +716,90 @@ func (e *Executor) ListContainers(host *HostConfig, all bool) ([]ContainerInfo, 
 }
 
 // ContainerAction performs a container action
-func (e *Executor) ContainerAction(host *HostConfig, containerID string, action string) *ActionResult {
-	cmd := fmt.Sprintf("docker %s %s", action, containerID)
+func (e *Executor) ContainerAction(host *HostConfig, runtime, containerID, action string) *ActionResult {
+	if runtime == "" {
+		runtime = "docker"
+	}
+	var cmd string
+	switch action {
+	case "start":
+		cmd = fmt.Sprintf("%s start %s", runtime, containerID)
+	case "stop":
+		cmd = fmt.Sprintf("%s stop %s", runtime, containerID)
+	case "restart":
+		cmd = fmt.Sprintf("%s restart %s", runtime, containerID)
+	case "logs":
+		cmd = fmt.Sprintf("%s logs --tail 100 %s", runtime, containerID)
+	default:
+		cmd = fmt.Sprintf("%s %s %s", runtime, action, containerID)
+	}
 	return e.ExecuteCommand(host, cmd)
 }
 
 // GetContainerLogs gets container logs
-func (e *Executor) GetContainerLogs(host *HostConfig, containerID string, lines int) *ActionResult {
+func (e *Executor) GetContainerLogs(host *HostConfig, runtime, containerID string, lines int) *ActionResult {
+	if runtime == "" {
+		runtime = "docker"
+	}
 	if lines == 0 {
 		lines = 100
 	}
-	cmd := fmt.Sprintf("docker logs --tail %d %s", lines, containerID)
+	cmd := fmt.Sprintf("%s logs --tail %d %s", runtime, lines, containerID)
+	return e.ExecuteCommand(host, cmd)
+}
+
+// ListContainerImages lists Docker/Podman images
+func (e *Executor) ListContainerImages(host *HostConfig, runtime string) ([]ContainerImage, error) {
+	if runtime == "" {
+		runtime = "docker"
+	}
+	cmd := fmt.Sprintf("%s images --format '{{.ID}}|{{.Repository}}|{{.Tag}}|{{.Size}}|{{.CreatedAt}}'", runtime)
+	result := e.ExecuteCommand(host, cmd)
+	if !result.Success {
+		return nil, fmt.Errorf(result.Error)
+	}
+
+	var images []ContainerImage
+	for _, line := range strings.Split(result.Output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "|")
+		if len(parts) >= 4 {
+			image := ContainerImage{
+				ID:         parts[0],
+				Repository: parts[1],
+				Tag:        parts[2],
+				Size:       parts[3],
+			}
+			if len(parts) >= 5 {
+				image.Created = parts[4]
+			}
+			images = append(images, image)
+		}
+	}
+	return images, nil
+}
+
+// DeleteContainerImages deletes container images
+func (e *Executor) DeleteContainerImages(host *HostConfig, runtime string, imageIDs []string) *ActionResult {
+	if runtime == "" {
+		runtime = "docker"
+	}
+	if len(imageIDs) == 0 {
+		return &ActionResult{Success: false, Error: "no images specified"}
+	}
+	cmd := fmt.Sprintf("%s rmi %s", runtime, strings.Join(imageIDs, " "))
+	return e.ExecuteCommand(host, cmd)
+}
+
+// ContainerSystemPrune cleans up unused container resources
+func (e *Executor) ContainerSystemPrune(host *HostConfig, runtime string) *ActionResult {
+	if runtime == "" {
+		runtime = "docker"
+	}
+	cmd := fmt.Sprintf("%s system prune -af", runtime)
 	return e.ExecuteCommand(host, cmd)
 }
 
@@ -666,6 +832,424 @@ func (e *Executor) Netstat(host *HostConfig, filter string) *ActionResult {
 }
 
 // ========================================
+// System Log Actions
+// ========================================
+
+// GetSyslog retrieves system logs
+func (e *Executor) GetSyslog(host *HostConfig, lines int) *ActionResult {
+	if lines <= 0 {
+		lines = 100
+	}
+	// Try journalctl first (systemd), fallback to traditional syslog
+	cmd := fmt.Sprintf("journalctl -n %d --no-pager 2>/dev/null || tail -n %d /var/log/syslog 2>/dev/null || tail -n %d /var/log/messages", lines, lines, lines)
+	return e.ExecuteCommand(host, cmd)
+}
+
+// GetAuthLog retrieves authentication logs
+func (e *Executor) GetAuthLog(host *HostConfig, lines int) *ActionResult {
+	if lines <= 0 {
+		lines = 100
+	}
+	// Try journalctl first (systemd), fallback to auth.log or secure
+	cmd := fmt.Sprintf("journalctl -u sshd -n %d --no-pager 2>/dev/null || tail -n %d /var/log/auth.log 2>/dev/null || tail -n %d /var/log/secure", lines, lines, lines)
+	return e.ExecuteCommand(host, cmd)
+}
+
+// ========================================
+// Cron Jobs Management
+// ========================================
+
+type CronJob struct {
+	ID       string `json:"id"`
+	Minute   string `json:"minute"`
+	Hour     string `json:"hour"`
+	Day      string `json:"day"`
+	Month    string `json:"month"`
+	Weekday  string `json:"weekday"`
+	Command  string `json:"command"`
+	User     string `json:"user"`
+	Enabled  bool   `json:"enabled"`
+	RawLine  string `json:"raw_line"`
+}
+
+func (e *Executor) ListCronJobs(host *HostConfig, user string) ([]CronJob, error) {
+	var cmd string
+	if user == "" || user == "current" {
+		cmd = "crontab -l 2>/dev/null || echo ''"
+	} else if user == "root" {
+		cmd = "sudo crontab -l 2>/dev/null || echo ''"
+	} else {
+		cmd = fmt.Sprintf("sudo crontab -u %s -l 2>/dev/null || echo ''", user)
+	}
+	
+	result := e.ExecuteCommand(host, cmd)
+	if result.Error != "" {
+		return nil, fmt.Errorf(result.Error)
+	}
+	
+	var jobs []CronJob
+	lines := strings.Split(result.Output, "\n")
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		parts := strings.Fields(line)
+		if len(parts) >= 6 {
+			jobs = append(jobs, CronJob{
+				ID:      fmt.Sprintf("%d", i),
+				Minute:  parts[0],
+				Hour:    parts[1],
+				Day:     parts[2],
+				Month:   parts[3],
+				Weekday: parts[4],
+				Command: strings.Join(parts[5:], " "),
+				User:    user,
+				Enabled: true,
+				RawLine: line,
+			})
+		}
+	}
+	return jobs, nil
+}
+
+func (e *Executor) AddCronJob(host *HostConfig, user, minute, hour, day, month, weekday, command string) *ActionResult {
+	cronLine := fmt.Sprintf("%s %s %s %s %s %s", minute, hour, day, month, weekday, command)
+	
+	var cmd string
+	if user == "" || user == "current" {
+		cmd = fmt.Sprintf("(crontab -l 2>/dev/null; echo '%s') | crontab -", cronLine)
+	} else if user == "root" {
+		cmd = fmt.Sprintf("(sudo crontab -l 2>/dev/null; echo '%s') | sudo crontab -", cronLine)
+	} else {
+		cmd = fmt.Sprintf("(sudo crontab -u %s -l 2>/dev/null; echo '%s') | sudo crontab -u %s -", user, cronLine, user)
+	}
+	
+	return e.ExecuteCommand(host, cmd)
+}
+
+func (e *Executor) DeleteCronJob(host *HostConfig, user string, lineNumber int) *ActionResult {
+	var cmd string
+	if user == "" || user == "current" {
+		cmd = fmt.Sprintf("crontab -l 2>/dev/null | sed '%dd' | crontab -", lineNumber+1)
+	} else if user == "root" {
+		cmd = fmt.Sprintf("sudo crontab -l 2>/dev/null | sed '%dd' | sudo crontab -", lineNumber+1)
+	} else {
+		cmd = fmt.Sprintf("sudo crontab -u %s -l 2>/dev/null | sed '%dd' | sudo crontab -u %s -", user, lineNumber+1, user)
+	}
+	
+	return e.ExecuteCommand(host, cmd)
+}
+
+func (e *Executor) ListDirectory(host *HostConfig, path string) *ActionResult {
+	if path == "" {
+		path = "/"
+	}
+	// List directories and files with type indicator
+	cmd := fmt.Sprintf("ls -la %s 2>/dev/null | tail -n +2", path)
+	return e.ExecuteCommand(host, cmd)
+}
+
+// ========================================
+// Process Management
+// ========================================
+
+type ProcessInfo struct {
+	PID     string  `json:"pid"`
+	User    string  `json:"user"`
+	CPU     float64 `json:"cpu"`
+	Memory  float64 `json:"memory"`
+	VSZ     string  `json:"vsz"`
+	RSS     string  `json:"rss"`
+	TTY     string  `json:"tty"`
+	Stat    string  `json:"stat"`
+	Start   string  `json:"start"`
+	Time    string  `json:"time"`
+	Command string  `json:"command"`
+}
+
+func (e *Executor) ListProcesses(host *HostConfig, sortBy string) ([]ProcessInfo, error) {
+	var cmd string
+	switch sortBy {
+	case "cpu":
+		cmd = "ps aux --sort=-%cpu | head -50"
+	case "memory", "mem":
+		cmd = "ps aux --sort=-%mem | head -50"
+	default:
+		cmd = "ps aux --sort=-%cpu | head -50"
+	}
+	
+	result := e.ExecuteCommand(host, cmd)
+	if result.Error != "" {
+		return nil, fmt.Errorf(result.Error)
+	}
+	
+	var processes []ProcessInfo
+	lines := strings.Split(result.Output, "\n")
+	for i, line := range lines {
+		if i == 0 || line == "" { // Skip header
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) >= 11 {
+			cpu, _ := strconv.ParseFloat(fields[2], 64)
+			mem, _ := strconv.ParseFloat(fields[3], 64)
+			processes = append(processes, ProcessInfo{
+				PID:     fields[1],
+				User:    fields[0],
+				CPU:     cpu,
+				Memory:  mem,
+				VSZ:     fields[4],
+				RSS:     fields[5],
+				TTY:     fields[6],
+				Stat:    fields[7],
+				Start:   fields[8],
+				Time:    fields[9],
+				Command: strings.Join(fields[10:], " "),
+			})
+		}
+	}
+	return processes, nil
+}
+
+func (e *Executor) KillProcess(host *HostConfig, pid string, signal string) *ActionResult {
+	if signal == "" {
+		signal = "TERM"
+	}
+	// Validate PID is numeric
+	if _, err := strconv.Atoi(pid); err != nil {
+		return &ActionResult{Error: fmt.Sprintf("invalid PID: %s", pid)}
+	}
+	cmd := fmt.Sprintf("sudo kill -%s %s", signal, pid)
+	return e.ExecuteCommand(host, cmd)
+}
+
+func (e *Executor) GetProcessDetails(host *HostConfig, pid string) *ActionResult {
+	cmd := fmt.Sprintf("ps -p %s -o pid,ppid,user,%%cpu,%%mem,vsz,rss,tty,stat,start,time,comm,args --no-headers 2>/dev/null && echo '---' && ls -la /proc/%s/fd 2>/dev/null | wc -l", pid, pid)
+	return e.ExecuteCommand(host, cmd)
+}
+
+// ========================================
+// Firewall Management (UFW/iptables)
+// ========================================
+
+type FirewallRule struct {
+	ID       string `json:"id"`
+	Number   int    `json:"number"`
+	To       string `json:"to"`
+	Action   string `json:"action"`
+	From     string `json:"from"`
+	Port     string `json:"port"`
+	Protocol string `json:"protocol"`
+	V6       bool   `json:"v6"`
+	RawRule  string `json:"raw_rule"`
+}
+
+type FirewallStatus struct {
+	Active   bool           `json:"active"`
+	Type     string         `json:"type"` // ufw or iptables
+	Rules    []FirewallRule `json:"rules"`
+	Default  string         `json:"default"`
+}
+
+func (e *Executor) GetFirewallStatus(host *HostConfig) (*FirewallStatus, error) {
+	// Try UFW first
+	result := e.ExecuteCommand(host, "sudo ufw status numbered 2>/dev/null")
+	if result.Error == "" && !strings.Contains(result.Output, "command not found") {
+		return e.parseUFWStatus(result.Output), nil
+	}
+	
+	// Fallback to iptables
+	result = e.ExecuteCommand(host, "sudo iptables -L -n --line-numbers 2>/dev/null")
+	if result.Error != "" {
+		return &FirewallStatus{Active: false, Type: "none"}, nil
+	}
+	return e.parseIptablesStatus(result.Output), nil
+}
+
+func (e *Executor) parseUFWStatus(output string) *FirewallStatus {
+	status := &FirewallStatus{Type: "ufw", Rules: []FirewallRule{}}
+	
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "Status: active") {
+			status.Active = true
+		} else if strings.Contains(line, "Status: inactive") {
+			status.Active = false
+		}
+		
+		// Parse rules like: [ 1] 22/tcp                     ALLOW IN    Anywhere
+		if strings.HasPrefix(line, "[") {
+			parts := strings.Fields(line)
+			if len(parts) >= 4 {
+				numStr := strings.Trim(parts[0], "[]")
+				num, _ := strconv.Atoi(numStr)
+				
+				rule := FirewallRule{
+					ID:      numStr,
+					Number:  num,
+					RawRule: line,
+				}
+				
+				// Parse port/protocol
+				if len(parts) > 1 {
+					portProto := parts[1]
+					if strings.Contains(portProto, "/") {
+						pp := strings.Split(portProto, "/")
+						rule.Port = pp[0]
+						rule.Protocol = pp[1]
+					} else {
+						rule.Port = portProto
+					}
+					rule.To = portProto
+				}
+				
+				// Parse action
+				for _, p := range parts {
+					if p == "ALLOW" || p == "DENY" || p == "REJECT" || p == "LIMIT" {
+						rule.Action = p
+						break
+					}
+				}
+				
+				// Check for v6
+				if strings.Contains(line, "(v6)") {
+					rule.V6 = true
+				}
+				
+				// Parse from
+				for i, p := range parts {
+					if p == "Anywhere" || strings.Contains(p, ".") || strings.Contains(p, ":") {
+						if i > 2 {
+							rule.From = p
+						}
+					}
+				}
+				
+				status.Rules = append(status.Rules, rule)
+			}
+		}
+	}
+	return status
+}
+
+func (e *Executor) parseIptablesStatus(output string) *FirewallStatus {
+	status := &FirewallStatus{Type: "iptables", Active: true, Rules: []FirewallRule{}}
+	
+	lines := strings.Split(output, "\n")
+	ruleNum := 0
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Chain") || line == "" || strings.HasPrefix(line, "num") {
+			continue
+		}
+		
+		parts := strings.Fields(line)
+		if len(parts) >= 4 {
+			ruleNum++
+			rule := FirewallRule{
+				ID:      fmt.Sprintf("%d", ruleNum),
+				Number:  ruleNum,
+				Action:  parts[1],
+				RawRule: line,
+			}
+			
+			// Try to extract port
+			for i, p := range parts {
+				if p == "dpt:" || strings.HasPrefix(p, "dpt:") {
+					if strings.HasPrefix(p, "dpt:") {
+						rule.Port = strings.TrimPrefix(p, "dpt:")
+					} else if i+1 < len(parts) {
+						rule.Port = parts[i+1]
+					}
+				}
+				if p == "tcp" || p == "udp" {
+					rule.Protocol = p
+				}
+			}
+			
+			status.Rules = append(status.Rules, rule)
+		}
+	}
+	return status
+}
+
+func (e *Executor) AddFirewallRule(host *HostConfig, ruleType, port, protocol, fromIP, action string) *ActionResult {
+	// Check if UFW is available
+	checkCmd := "which ufw 2>/dev/null"
+	checkResult := e.ExecuteCommand(host, checkCmd)
+	
+	if strings.TrimSpace(checkResult.Output) != "" {
+		// Use UFW
+		var cmd string
+		if action == "" {
+			action = "allow"
+		}
+		if fromIP != "" && fromIP != "any" {
+			cmd = fmt.Sprintf("sudo ufw %s from %s to any port %s", action, fromIP, port)
+		} else {
+			if protocol != "" {
+				cmd = fmt.Sprintf("sudo ufw %s %s/%s", action, port, protocol)
+			} else {
+				cmd = fmt.Sprintf("sudo ufw %s %s", action, port)
+			}
+		}
+		return e.ExecuteCommand(host, cmd)
+	}
+	
+	// Fallback to iptables
+	if action == "" || action == "allow" {
+		action = "ACCEPT"
+	} else if action == "deny" {
+		action = "DROP"
+	}
+	if protocol == "" {
+		protocol = "tcp"
+	}
+	
+	cmd := fmt.Sprintf("sudo iptables -A INPUT -p %s --dport %s -j %s", protocol, port, action)
+	if fromIP != "" && fromIP != "any" {
+		cmd = fmt.Sprintf("sudo iptables -A INPUT -s %s -p %s --dport %s -j %s", fromIP, protocol, port, action)
+	}
+	return e.ExecuteCommand(host, cmd)
+}
+
+func (e *Executor) DeleteFirewallRule(host *HostConfig, ruleNumber int) *ActionResult {
+	// Try UFW first
+	checkCmd := "which ufw 2>/dev/null"
+	checkResult := e.ExecuteCommand(host, checkCmd)
+	
+	if strings.TrimSpace(checkResult.Output) != "" {
+		cmd := fmt.Sprintf("sudo ufw --force delete %d", ruleNumber)
+		return e.ExecuteCommand(host, cmd)
+	}
+	
+	// Fallback to iptables
+	cmd := fmt.Sprintf("sudo iptables -D INPUT %d", ruleNumber)
+	return e.ExecuteCommand(host, cmd)
+}
+
+func (e *Executor) ToggleFirewall(host *HostConfig, enable bool) *ActionResult {
+	// Try UFW first
+	checkCmd := "which ufw 2>/dev/null"
+	checkResult := e.ExecuteCommand(host, checkCmd)
+	
+	if strings.TrimSpace(checkResult.Output) != "" {
+		var cmd string
+		if enable {
+			cmd = "sudo ufw --force enable"
+		} else {
+			cmd = "sudo ufw disable"
+		}
+		return e.ExecuteCommand(host, cmd)
+	}
+	
+	return &ActionResult{Error: "UFW not found. Manual iptables management required."}
+}
+
+// ========================================
 // Helpers
 // ========================================
 
@@ -677,9 +1261,21 @@ func (e *Executor) connect(host *HostConfig) (*ssh.Client, error) {
 	}
 
 	if host.KeyPath != "" {
-		key, err := os.ReadFile(host.KeyPath)
+		keyPath := host.KeyPath
+		// Expand tilde to home directory
+		if strings.HasPrefix(keyPath, "~/") {
+			if home, err := os.UserHomeDir(); err == nil {
+				keyPath = home + keyPath[1:]
+			}
+		}
+		key, err := os.ReadFile(keyPath)
 		if err == nil {
-			signer, err := ssh.ParsePrivateKey(key)
+			var signer ssh.Signer
+			if host.Passphrase != "" {
+				signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(host.Passphrase))
+			} else {
+				signer, err = ssh.ParsePrivateKey(key)
+			}
 			if err == nil {
 				authMethods = append(authMethods, ssh.PublicKeys(signer))
 			}

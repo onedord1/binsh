@@ -75,6 +75,25 @@ type CloudConfig struct {
 	SecretAccessKey string `json:"secret_access_key,omitempty"`
 	Service         string `json:"service,omitempty"`
 	IPAddressType   string `json:"ip_address_type,omitempty"`
+	// GCP specific
+	ProjectID          string `json:"project_id,omitempty"`
+	ServiceAccountJSON string `json:"service_account_json,omitempty"`
+	// Azure specific
+	SubscriptionID string `json:"subscription_id,omitempty"`
+	TenantID       string `json:"tenant_id,omitempty"`
+	ClientID       string `json:"client_id,omitempty"`
+	ClientSecret   string `json:"client_secret,omitempty"`
+	ResourceGroup  string `json:"resource_group,omitempty"`
+	// Oracle Cloud specific
+	TenancyOCID     string `json:"tenancy_ocid,omitempty"`
+	UserOCID        string `json:"user_ocid,omitempty"`
+	Fingerprint     string `json:"fingerprint,omitempty"`
+	PrivateKey      string `json:"private_key,omitempty"`
+	CompartmentOCID string `json:"compartment_ocid,omitempty"`
+	// Alibaba Cloud specific
+	// Uses AccessKeyID and SecretAccessKey
+	// Akamai/Linode specific
+	APIToken string `json:"api_token,omitempty"`
 }
 
 // Keychain represents stored credentials

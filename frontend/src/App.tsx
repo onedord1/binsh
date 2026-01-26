@@ -11,6 +11,7 @@ import Snippets from './pages/Snippets'
 import PortForwarding from './pages/PortForwarding'
 import Settings from './pages/Settings'
 import Locker from './pages/Locker'
+import KnownHosts from './pages/KnownHosts'
 import ConnectionStatus from './pages/ConnectionStatus'
 import SFTPManagerMulti from './pages/SFTPManagerMulti'
 
@@ -50,6 +51,7 @@ function App() {
       >
         <Route index element={<Navigate to="/hosts" replace />} />
         <Route path="hosts" element={<Hosts />} />
+        <Route path="known-hosts" element={<KnownHosts />} />
         <Route path="keychain" element={<Keychain />} />
         <Route path="port-forwarding" element={<PortForwarding />} />
         <Route path="snippets" element={<Snippets />} />

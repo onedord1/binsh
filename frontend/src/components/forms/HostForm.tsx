@@ -141,14 +141,14 @@ export default function HostForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
-        <div className="p-4 rounded-xl bg-gradient-to-br from-primary-500/10 to-accent-cyan/10 border border-primary-500/20">
+        <div className="p-4 rounded-xl bg-gradient-to-br from-primary-500/10 to-accent-cyan/10 dark:from-primary-500/20 dark:to-accent-cyan/20 border border-primary-500/20">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-accent-cyan flex items-center justify-center">
               <Server className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h4 className="font-medium text-white">Address</h4>
-              <p className="text-xs text-dark-400">IP or hostname</p>
+              <h4 className="font-medium text-gray-900 dark:text-white">Address</h4>
+              <p className="text-xs text-gray-500 dark:text-dark-400">IP or hostname</p>
             </div>
           </div>
           <input
@@ -235,8 +235,8 @@ export default function HostForm() {
                 onClick={() => setForm({ ...form, auth_method: method.id as typeof form.auth_method })}
                 className={`p-3 rounded-xl border transition-all duration-200 flex flex-col items-center gap-2 ${
                   form.auth_method === method.id
-                    ? 'bg-primary-500/10 border-primary-500/50 text-primary-400'
-                    : 'bg-dark-800/50 border-dark-700 text-dark-400 hover:border-dark-600'
+                    ? 'bg-primary-500/10 border-primary-500/50 text-primary-500'
+                    : 'bg-white dark:bg-dark-800/50 border-gray-200 dark:border-dark-700 text-gray-500 dark:text-dark-400 hover:border-gray-300 dark:hover:border-dark-600'
                 }`}
               >
                 <method.icon className="w-5 h-5" />
@@ -342,13 +342,45 @@ export default function HostForm() {
                 <Key className="w-4 h-4" />
                 SSH Key Path
               </label>
-              <input
-                type="text"
-                value={form.ssh_key_path}
-                onChange={(e) => setForm({ ...form, ssh_key_path: e.target.value })}
-                placeholder="~/.ssh/id_rsa"
-                className="input"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={form.ssh_key_path}
+                  onChange={(e) => setForm({ ...form, ssh_key_path: e.target.value })}
+                  placeholder="~/.ssh/id_rsa"
+                  className="input flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const input = document.createElement('input')
+                    input.type = 'file'
+                    input.accept = '.pem,.pub,.key,*'
+                    input.onchange = (e) => {
+                      const file = (e.target as HTMLInputElement).files?.[0]
+                      if (file) {
+                        // Read the file content and store the path
+                        const reader = new FileReader()
+                        reader.onload = (event) => {
+                          const content = event.target?.result as string
+                          setForm({ 
+                            ...form, 
+                            ssh_key_path: file.name,
+                            ssh_key: content 
+                          })
+                          toast.success(`Loaded key from ${file.name}`)
+                        }
+                        reader.readAsText(file)
+                      }
+                    }
+                    input.click()
+                  }}
+                  className="btn btn-secondary px-3"
+                  title="Browse for SSH key file"
+                >
+                  <FolderOpen className="w-4 h-4" />
+                </button>
+              </div>
               <p className="text-xs text-gray-500 dark:text-dark-400 mt-1">Or paste key content below</p>
             </div>
             {form.ssh_key && (
@@ -381,13 +413,13 @@ export default function HostForm() {
       <button
         type="button"
         onClick={() => setShowAdvanced(!showAdvanced)}
-        className="w-full flex items-center justify-between p-3 rounded-xl bg-dark-800/30 hover:bg-dark-800/50 transition-colors"
+        className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-100 dark:bg-dark-800/30 hover:bg-gray-200 dark:hover:bg-dark-800/50 transition-colors border border-gray-200 dark:border-transparent"
       >
-        <span className="text-sm font-medium text-dark-300">Advanced Settings</span>
+        <span className="text-sm font-medium text-gray-700 dark:text-dark-300">Advanced Settings</span>
         {showAdvanced ? (
-          <ChevronUp className="w-4 h-4 text-dark-400" />
+          <ChevronUp className="w-4 h-4 text-gray-500 dark:text-dark-400" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-dark-400" />
+          <ChevronDown className="w-4 h-4 text-gray-500 dark:text-dark-400" />
         )}
       </button>
 
@@ -452,15 +484,26 @@ export default function HostForm() {
             ].map((option) => (
               <label
                 key={option.key}
-                className="flex items-center gap-3 p-3 rounded-xl bg-dark-800/30 cursor-pointer hover:bg-dark-800/50 transition-colors"
+                className="flex items-center gap-3 p-3 rounded-xl bg-gray-100 dark:bg-dark-800/30 cursor-pointer hover:bg-gray-200 dark:hover:bg-dark-800/50 transition-colors border border-gray-200 dark:border-transparent"
               >
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                  form[option.key as keyof typeof form]
+                    ? 'bg-primary-500 border-primary-500'
+                    : 'bg-white dark:bg-dark-800 border-gray-300 dark:border-dark-600'
+                }`}>
+                  {form[option.key as keyof typeof form] && (
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
                 <input
                   type="checkbox"
                   checked={form[option.key as keyof typeof form] as boolean}
                   onChange={(e) => setForm({ ...form, [option.key]: e.target.checked })}
-                  className="w-4 h-4 rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500/30"
+                  className="sr-only"
                 />
-                <span className="text-sm text-dark-300">{option.label}</span>
+                <span className="text-sm text-gray-700 dark:text-dark-300">{option.label}</span>
               </label>
             ))}
           </div>

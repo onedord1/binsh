@@ -32,6 +32,19 @@ interface AppState {
   activeTerminals: string[]
   addTerminal: (hostId: string) => void
   removeTerminal: (hostId: string) => void
+
+  // Modal states
+  importModalOpen: boolean
+  openImportModal: () => void
+  closeImportModal: () => void
+
+  exportModalOpen: boolean
+  openExportModal: () => void
+  closeExportModal: () => void
+
+  cloudSyncModalOpen: boolean
+  openCloudSyncModal: () => void
+  closeCloudSyncModal: () => void
 }
 
 const getInitialTheme = (): 'light' | 'dark' => {
@@ -90,4 +103,17 @@ export const useAppStore = create<AppState>((set) => ({
   removeTerminal: (hostId) => set((state) => ({
     activeTerminals: state.activeTerminals.filter((id) => id !== hostId)
   })),
+
+  // Modal states
+  importModalOpen: false,
+  openImportModal: () => set({ importModalOpen: true }),
+  closeImportModal: () => set({ importModalOpen: false }),
+
+  exportModalOpen: false,
+  openExportModal: () => set({ exportModalOpen: true }),
+  closeExportModal: () => set({ exportModalOpen: false }),
+
+  cloudSyncModalOpen: false,
+  openCloudSyncModal: () => set({ cloudSyncModalOpen: true }),
+  closeCloudSyncModal: () => set({ cloudSyncModalOpen: false }),
 }))

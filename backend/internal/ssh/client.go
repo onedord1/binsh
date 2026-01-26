@@ -241,30 +241,33 @@ func (m *Manager) buildAuthMethods(config *ConnectionConfig, sendStatus func(str
 		}
 
 	case "key":
-		// Try private key from path
+		var keyLoaded bool
+
+		// Try private key from path first
 		if config.PrivateKeyPath != "" {
 			keyPath := expandPath(config.PrivateKeyPath)
 			key, err := os.ReadFile(keyPath)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read private key: %w", err)
-			}
-
-			var signer ssh.Signer
-			if config.Passphrase != "" {
-				signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(config.Passphrase))
+			if err == nil {
+				var signer ssh.Signer
+				if config.Passphrase != "" {
+					signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(config.Passphrase))
+				} else {
+					signer, err = ssh.ParsePrivateKey(key)
+				}
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse private key: %w", err)
+				}
+				methods = append(methods, ssh.PublicKeys(signer))
+				sendStatus("log", fmt.Sprintf("Using SSH key from %s", config.PrivateKeyPath), false)
+				keyLoaded = true
 			} else {
-				signer, err = ssh.ParsePrivateKey(key)
+				// Path failed, will try inline key next
+				sendStatus("log", fmt.Sprintf("Could not read key from path %s, trying inline key", config.PrivateKeyPath), false)
 			}
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse private key: %w", err)
-			}
-
-			methods = append(methods, ssh.PublicKeys(signer))
-			sendStatus("log", fmt.Sprintf("Using SSH key from %s", config.PrivateKeyPath), false)
 		}
 
-		// Try inline private key
-		if config.PrivateKey != "" {
+		// Try inline private key (fallback or primary if no path)
+		if !keyLoaded && config.PrivateKey != "" {
 			var signer ssh.Signer
 			var err error
 			if config.Passphrase != "" {

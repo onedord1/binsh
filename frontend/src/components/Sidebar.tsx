@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -15,13 +16,36 @@ import {
   Sun,
   Moon,
   Shield,
+  Check,
+  Wifi,
 } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useAuthStore } from '../stores/authStore'
 import clsx from 'clsx'
 
+// Prebuilt avatar options
+const avatarOptions = [
+  { id: 'gradient-1', type: 'gradient', colors: 'from-purple-500 to-pink-500' },
+  { id: 'gradient-2', type: 'gradient', colors: 'from-blue-500 to-cyan-500' },
+  { id: 'gradient-3', type: 'gradient', colors: 'from-green-500 to-emerald-500' },
+  { id: 'gradient-4', type: 'gradient', colors: 'from-orange-500 to-red-500' },
+  { id: 'gradient-5', type: 'gradient', colors: 'from-indigo-500 to-purple-500' },
+  { id: 'gradient-6', type: 'gradient', colors: 'from-rose-500 to-pink-500' },
+  { id: 'gradient-7', type: 'gradient', colors: 'from-teal-500 to-cyan-500' },
+  { id: 'gradient-8', type: 'gradient', colors: 'from-amber-500 to-yellow-500' },
+  { id: 'emoji-1', type: 'emoji', emoji: '😎' },
+  { id: 'emoji-2', type: 'emoji', emoji: '🚀' },
+  { id: 'emoji-3', type: 'emoji', emoji: '💻' },
+  { id: 'emoji-4', type: 'emoji', emoji: '🔥' },
+  { id: 'emoji-5', type: 'emoji', emoji: '⚡' },
+  { id: 'emoji-6', type: 'emoji', emoji: '🎯' },
+  { id: 'emoji-7', type: 'emoji', emoji: '🦊' },
+  { id: 'emoji-8', type: 'emoji', emoji: '🐱' },
+]
+
 const navItems = [
   { path: '/hosts', icon: Server, label: 'Hosts' },
+  { path: '/known-hosts', icon: Wifi, label: 'Known Hosts' },
   { path: '/keychain', icon: Key, label: 'Keychain' },
   { path: '/locker', icon: Shield, label: 'Locker' },
   { path: '/port-forwarding', icon: Share2, label: 'Port Forwarding' },
@@ -32,7 +56,12 @@ const navItems = [
 export default function Sidebar() {
   const navigate = useNavigate()
   const { sidebarCollapsed, toggleSidebar, theme, toggleTheme } = useAppStore()
-  const { user, logout } = useAuthStore()
+  const { user, logout, updateAvatar } = useAuthStore()
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false)
+
+  // Get current avatar or default
+  const currentAvatar = user?.avatar || 'gradient-1'
+  const avatarData = avatarOptions.find(a => a.id === currentAvatar) || avatarOptions[0]
 
   const handleLogout = () => {
     logout()
@@ -210,14 +239,26 @@ export default function Sidebar() {
         </div>
       </nav>
 
-      <div className="p-3 border-t border-gray-200 dark:border-dark-700/50">
+      <div className="p-3 border-t border-gray-200 dark:border-dark-700/50 relative">
         <div className={clsx(
           'flex items-center gap-3 p-2 rounded-xl bg-gray-100 dark:bg-dark-800/50',
           sidebarCollapsed ? 'justify-center' : ''
         )}>
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent-purple to-accent-pink flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
-            {user?.email?.charAt(0).toUpperCase() || 'U'}
-          </div>
+          <button
+            onClick={() => setShowAvatarPicker(!showAvatarPicker)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 hover:ring-2 hover:ring-primary-500 transition-all cursor-pointer overflow-hidden"
+            title="Change avatar"
+          >
+            {avatarData.type === 'gradient' ? (
+              <div className={`w-full h-full bg-gradient-to-br ${avatarData.colors} flex items-center justify-center`}>
+                {user?.email?.charAt(0).toUpperCase() || 'U'}
+              </div>
+            ) : (
+              <div className="w-full h-full bg-gray-200 dark:bg-dark-700 flex items-center justify-center text-lg">
+                {avatarData.emoji}
+              </div>
+            )}
+          </button>
           
           <AnimatePresence mode="wait">
             {!sidebarCollapsed && (
@@ -258,6 +299,69 @@ export default function Sidebar() {
             </div>
           )}
         </div>
+
+        {/* Avatar Picker Popup */}
+        <AnimatePresence>
+          {showAvatarPicker && (
+            <>
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setShowAvatarPicker(false)} 
+              />
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="absolute bottom-full left-3 right-3 mb-2 bg-white dark:bg-dark-800 rounded-xl border border-gray-200 dark:border-dark-700 shadow-2xl p-4 z-50"
+              >
+                <p className="text-sm font-medium text-gray-900 dark:text-white mb-3">Choose Avatar</p>
+                
+                <div className="mb-3">
+                  <p className="text-xs text-gray-500 dark:text-dark-400 mb-2">Gradients</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {avatarOptions.filter(a => a.type === 'gradient').map((avatar) => (
+                      <button
+                        key={avatar.id}
+                        onClick={() => {
+                          updateAvatar(avatar.id)
+                          setShowAvatarPicker(false)
+                        }}
+                        className={clsx(
+                          'w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold text-sm transition-all hover:scale-110',
+                          `bg-gradient-to-br ${avatar.colors}`,
+                          currentAvatar === avatar.id && 'ring-2 ring-primary-500 ring-offset-2 ring-offset-white dark:ring-offset-dark-800'
+                        )}
+                      >
+                        {currentAvatar === avatar.id && <Check className="w-4 h-4" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-dark-400 mb-2">Emojis</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {avatarOptions.filter(a => a.type === 'emoji').map((avatar) => (
+                      <button
+                        key={avatar.id}
+                        onClick={() => {
+                          updateAvatar(avatar.id)
+                          setShowAvatarPicker(false)
+                        }}
+                        className={clsx(
+                          'w-10 h-10 rounded-lg bg-gray-100 dark:bg-dark-700 flex items-center justify-center text-xl transition-all hover:scale-110',
+                          currentAvatar === avatar.id && 'ring-2 ring-primary-500 ring-offset-2 ring-offset-white dark:ring-offset-dark-800'
+                        )}
+                      >
+                        {avatar.emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
       </div>
     </motion.aside>
   )
