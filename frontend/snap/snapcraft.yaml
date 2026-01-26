@@ -1,0 +1,77 @@
+name: systask
+version: '1.0.0'
+summary: Modern SSH client for managing remote servers
+description: |
+  SysTask is a modern, feature-rich SSH client that helps you manage 
+  your remote servers efficiently. Features include:
+  - Terminal emulation with xterm.js
+  - Host and group management
+  - Secure keychain storage
+  - Command snippets
+  - Port forwarding
+  - Beautiful dark theme UI
+
+grade: stable
+confinement: strict
+base: core22
+
+architectures:
+  - build-on: amd64
+
+apps:
+  systask:
+    command: bin/systask
+    desktop: share/applications/systask.desktop
+    extensions: [gnome]
+    plugs:
+      - home
+      - network
+      - network-bind
+      - ssh-keys
+      - gpg-keys
+      - password-manager-service
+
+parts:
+  systask:
+    plugin: nil
+    source: .
+    build-packages:
+      - curl
+      - wget
+      - libwebkit2gtk-4.1-dev
+      - libssl-dev
+      - libayatana-appindicator3-dev
+      - librsvg2-dev
+    stage-packages:
+      - libwebkit2gtk-4.1-0
+      - libssl3
+      - libayatana-appindicator3-1
+    override-build: |
+      # Install Rust
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      export PATH="$HOME/.cargo/bin:$PATH"
+      
+      # Install Node.js via nvm
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+      nvm install 20
+      nvm use 20
+      
+      # Build the application
+      npm install
+      npm run tauri:build
+      
+      # Copy binary
+      mkdir -p $CRAFT_PART_INSTALL/bin
+      cp src-tauri/target/release/systask $CRAFT_PART_INSTALL/bin/
+      
+      # Copy desktop file and icons
+      mkdir -p $CRAFT_PART_INSTALL/share/applications
+      mkdir -p $CRAFT_PART_INSTALL/share/icons/hicolor/128x128/apps
+      cp src-tauri/systask.desktop $CRAFT_PART_INSTALL/share/applications/
+      cp src-tauri/icons/128x128.png $CRAFT_PART_INSTALL/share/icons/hicolor/128x128/apps/systask.png
+
+layout:
+  /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1:
+    bind: $SNAP/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1

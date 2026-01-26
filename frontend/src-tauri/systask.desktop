@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=SysTask
+Comment=Modern SSH client for managing remote servers
+Exec=systask
+Icon=systask
+Terminal=false
+Type=Application
+Categories=Utility;Network;RemoteAccess;
+Keywords=ssh;terminal;server;remote;
+StartupWMClass=systask

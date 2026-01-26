@@ -1,0 +1,245 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-dark-700 dark:border-dark-700;
+  }
+  
+  body {
+    @apply bg-gray-100 text-gray-900 dark:bg-dark-900 dark:text-dark-100;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-200 dark:bg-dark-900;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-400 dark:bg-dark-700 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500 dark:bg-dark-600;
+  }
+
+  ::selection {
+    @apply bg-primary-500/30 text-white;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-dark-900 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply bg-gradient-to-r from-primary-500 to-primary-600 text-white hover:from-primary-600 hover:to-primary-700 focus:ring-primary-500 shadow-lg shadow-primary-500/25 hover:shadow-primary-500/40;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-dark-700 dark:text-dark-100 dark:hover:bg-dark-600 focus:ring-dark-500 border border-gray-300 dark:border-dark-600;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-gray-600 hover:bg-gray-200 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white focus:ring-dark-500;
+  }
+
+  .btn-danger {
+    @apply bg-red-500/10 text-red-400 hover:bg-red-500/20 focus:ring-red-500 border border-red-500/20;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-base;
+  }
+
+  .btn-icon {
+    @apply p-2;
+  }
+
+  .input {
+    @apply w-full px-4 py-2.5 bg-white border border-gray-300 dark:bg-dark-800/50 dark:border-dark-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all duration-200;
+  }
+
+  .input-error {
+    @apply border-red-500/50 focus:ring-red-500/50 focus:border-red-500;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-gray-600 dark:text-dark-300 mb-1.5;
+  }
+
+  .card {
+    @apply bg-white border border-gray-200 dark:bg-dark-800/50 dark:border-dark-700/50 backdrop-blur-sm rounded-xl p-4 transition-all duration-200;
+  }
+
+  .card-hover {
+    @apply hover:bg-gray-50 hover:border-gray-300 dark:hover:bg-dark-800 dark:hover:border-dark-600 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-dark-950/50 cursor-pointer;
+  }
+
+  .glass {
+    @apply bg-white/30 dark:bg-dark-800/30 backdrop-blur-xl border border-gray-200/30 dark:border-dark-700/30;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-200/50 dark:text-dark-400 dark:hover:text-white dark:hover:bg-dark-800/50 transition-all duration-200 group;
+  }
+
+  .sidebar-link.active {
+    @apply bg-primary-500/10 text-primary-500 dark:text-primary-400 border-l-2 border-primary-500;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium;
+  }
+
+  .badge-primary {
+    @apply bg-primary-500/10 text-primary-400 border border-primary-500/20;
+  }
+
+  .badge-success {
+    @apply bg-green-500/10 text-green-400 border border-green-500/20;
+  }
+
+  .badge-warning {
+    @apply bg-yellow-500/10 text-yellow-400 border border-yellow-500/20;
+  }
+
+  .badge-danger {
+    @apply bg-red-500/10 text-red-400 border border-red-500/20;
+  }
+
+  .badge-neutral {
+    @apply bg-dark-700 text-dark-300 border border-dark-600;
+  }
+
+  .tooltip {
+    @apply absolute z-50 px-2 py-1 text-xs bg-dark-700 text-white rounded shadow-lg opacity-0 invisible transition-all duration-200 group-hover:opacity-100 group-hover:visible;
+  }
+
+  .divider {
+    @apply w-full h-px bg-gradient-to-r from-transparent via-dark-700 to-transparent;
+  }
+
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-online {
+    @apply bg-green-500 shadow-lg shadow-green-500/50;
+  }
+
+  .status-offline {
+    @apply bg-dark-500;
+  }
+
+  .status-connecting {
+    @apply bg-yellow-500 animate-pulse shadow-lg shadow-yellow-500/50;
+  }
+
+  .glow-text {
+    @apply text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-accent-cyan;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply text-transparent bg-clip-text bg-gradient-to-r;
+  }
+
+  .animate-in {
+    animation: animate-in 0.2s ease-out;
+  }
+
+  @keyframes animate-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .slide-in-right {
+    animation: slide-in-right 0.3s ease-out;
+  }
+
+  @keyframes slide-in-right {
+    from {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .slide-out-right {
+    animation: slide-out-right 0.3s ease-in;
+  }
+
+  @keyframes slide-out-right {
+    from {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+  }
+}
+
+.xterm {
+  padding: 8px;
+  height: 100% !important;
+}
+
+.xterm-screen {
+  height: 100% !important;
+}
+
+.xterm-viewport {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+/* Ensure terminal container clips overflow properly */
+.terminal-container {
+  position: relative;
+  overflow: hidden !important;
+}
+
+.terminal-container .xterm {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
