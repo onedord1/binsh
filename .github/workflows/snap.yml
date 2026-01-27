@@ -13,6 +13,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
+
+      - name: Build backend with embedded frontend
+        working-directory: backend
+        run: |
+          mkdir -p cmd/systask/static
+          cp -r ../frontend/dist/* cmd/systask/static/
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o ../dist/binsh ./cmd/systask
+
       - name: Build snap
         uses: snapcore/action-build@v1
         id: snapcraft
