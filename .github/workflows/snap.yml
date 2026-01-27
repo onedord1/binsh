@@ -22,6 +22,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
+          cache-dependency-path: backend/go.sum
 
       - name: Build frontend
         working-directory: frontend
@@ -29,12 +30,17 @@ jobs:
           npm install
           npm run build
 
+      - name: Create dist directory
+        run: mkdir -p dist
+
       - name: Build backend with embedded frontend
         working-directory: backend
         run: |
           mkdir -p cmd/systask/static
           cp -r ../frontend/dist/* cmd/systask/static/
           CGO_ENABLED=0 go build -ldflags="-s -w" -o ../dist/binsh ./cmd/systask
+          chmod +x ../dist/binsh
+          ls -la ../dist/
 
       - name: Build snap
         uses: snapcore/action-build@v1
