@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      snap: ${{ steps.snapcraft.outputs.snap }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -63,14 +65,12 @@ jobs:
           name: snap
           path: .
 
-      - name: Find snap file
-        id: find-snap
-        run: echo "snap=$(ls *.snap)" >> $GITHUB_OUTPUT
+      - name: List downloaded files
+        run: ls -la
 
       - name: Publish to Snap Store
-        uses: snapcore/action-publish@v1
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAP_STORE_TOKEN }}
-        with:
-          snap: ${{ steps.find-snap.outputs.snap }}
-          release: beta
+        run: |
+          sudo snap install --classic snapcraft
+          snapcraft upload ${{ needs.build.outputs.snap }} --release beta
