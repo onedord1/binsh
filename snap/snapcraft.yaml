@@ -5,7 +5,7 @@ description: |
   binsh is a powerful, feature-rich SSH client designed for DevOps engineers,
   system administrators, and developers who manage multiple servers.
 
-  **Features:**
+  Features:
   - Multi-server management with groups and tags
   - Secure credential storage with AES-256 vault encryption
   - SFTP file manager with dual-pane interface
@@ -13,15 +13,8 @@ description: |
   - Port forwarding management (local, remote, dynamic)
   - Command snippets library
   - Real-time system metrics
-  - Quick Actions for server management
   - Import/Export hosts (SSH config, JSON, CSV)
   - Terminal with 15+ color themes
-
-  **Quick Start:**
-  1. Run `binsh`
-  2. Open http://localhost:9876
-  3. Register and set up vault
-  4. Add your first host!
 
 grade: stable
 confinement: strict
@@ -47,41 +40,20 @@ apps:
       XDG_CONFIG_HOME: $SNAP_USER_DATA/.config
 
 parts:
-  frontend:
-    plugin: npm
-    source: frontend
-    npm-node-version: "20.11.0"
-    build-packages:
-      - nodejs
-      - npm
-    override-build: |
-      npm install
-      npm run build
-      mkdir -p $SNAPCRAFT_PART_INSTALL/frontend-dist
-      cp -r dist/* $SNAPCRAFT_PART_INSTALL/frontend-dist/
-
-  backend:
-    plugin: go
-    source: backend
-    build-snaps:
-      - go/1.21/stable
-    after: [frontend]
-    override-build: |
-      # Copy frontend assets to embed location
-      mkdir -p cmd/systask/static
-      cp -r $SNAPCRAFT_STAGE/frontend-dist/* cmd/systask/static/
-      
-      # Build the Go binary
-      go build -o $SNAPCRAFT_PART_INSTALL/bin/binsh ./cmd/systask
+  binsh:
+    plugin: dump
+    source: dist/
+    source-type: local
     organize:
-      bin/binsh: bin/binsh
+      binsh: bin/binsh
+    stage:
+      - bin/binsh
 
-  desktop-integration:
+  desktop:
     plugin: dump
     source: snap/gui
     organize:
       binsh.desktop: usr/share/applications/binsh.desktop
-      binsh.png: usr/share/icons/hicolor/256x256/apps/binsh.png
 
   icons:
     plugin: dump
