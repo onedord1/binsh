@@ -42,6 +42,10 @@ jobs:
         working-directory: electron
         run: npm install
 
+      - name: Install snapcraft
+        run: |
+          sudo snap install snapcraft --classic
+
       - name: Build Electron app (Linux)
         working-directory: electron
         run: |

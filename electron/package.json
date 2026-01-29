@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "Modern SSH Client & Server Management Platform",
   "main": "main.js",
-  "author": "binsh",
+  "author": {
+    "name": "binsh",
+    "email": "support@binsh.io"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
