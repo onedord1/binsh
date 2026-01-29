@@ -24,7 +24,7 @@ architectures:
 
 apps:
   binsh:
-    command: bin/binsh
+    command: bin/binsh-launcher.sh
     desktop: usr/share/applications/binsh.desktop
     plugs:
       - network
@@ -35,6 +35,8 @@ apps:
       - x11
       - wayland
       - browser-support
+      - unity7
+      - opengl
     environment:
       HOME: $SNAP_USER_DATA
       XDG_CONFIG_HOME: $SNAP_USER_DATA/.config
@@ -48,6 +50,16 @@ parts:
       binsh: bin/binsh
     stage:
       - bin/binsh
+
+  launcher:
+    plugin: dump
+    source: snap/local
+    organize:
+      binsh-launcher.sh: bin/binsh-launcher.sh
+    stage:
+      - bin/binsh-launcher.sh
+    stage-packages:
+      - curl
 
   desktop:
     plugin: dump
