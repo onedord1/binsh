@@ -5,6 +5,10 @@
   "main": "main.js",
   "author": "binsh",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/onedord1/binsh.git"
+  },
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
