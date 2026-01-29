@@ -1,0 +1,131 @@
+{
+  "name": "binsh",
+  "version": "1.0.0",
+  "description": "Modern SSH Client & Server Management Platform",
+  "main": "main.js",
+  "author": "binsh",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:linux": "electron-builder --linux",
+    "build:deb": "electron-builder --linux deb",
+    "build:rpm": "electron-builder --linux rpm",
+    "build:snap": "electron-builder --linux snap",
+    "build:appimage": "electron-builder --linux AppImage",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "io.binsh.app",
+    "productName": "binsh",
+    "copyright": "Copyright © 2024 binsh",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/binsh",
+        "to": "backend/binsh-server"
+      },
+      {
+        "from": "../assets/icons",
+        "to": "icons"
+      }
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "snap",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        },
+        {
+          "target": "rpm",
+          "arch": ["x64"]
+        },
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ],
+      "category": "Network",
+      "icon": "../assets/icons",
+      "desktop": {
+        "Name": "binsh",
+        "Comment": "Modern SSH Client & Server Management",
+        "Categories": "Network;RemoteAccess;System;Development;",
+        "Keywords": "ssh;terminal;server;remote;sftp;"
+      }
+    },
+    "snap": {
+      "confinement": "classic",
+      "grade": "stable",
+      "summary": "Modern SSH Client & Server Management Platform",
+      "description": "binsh is a powerful, feature-rich SSH client for DevOps engineers, system administrators, and developers.",
+      "plugs": [
+        "default",
+        "network",
+        "network-bind",
+        "home",
+        "desktop",
+        "desktop-legacy",
+        "x11",
+        "wayland",
+        "browser-support",
+        "ssh-keys",
+        "ssh-public-keys"
+      ]
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ],
+      "category": "net"
+    },
+    "rpm": {
+      "depends": [
+        "gtk3",
+        "libnotify",
+        "nss",
+        "libXScrnSaver",
+        "libXtst",
+        "xdg-utils",
+        "at-spi2-core",
+        "libuuid",
+        "libsecret"
+      ]
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.developer-tools",
+      "icon": "../assets/icons/binsh.icns"
+    },
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "../assets/icons/binsh.ico"
+    }
+  }
+}
