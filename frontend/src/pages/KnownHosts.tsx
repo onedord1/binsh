@@ -12,12 +12,22 @@ import {
   Plus,
   AlertCircle,
   Globe,
-  MoreVertical
+  MoreVertical,
+  Terminal,
+  Copy,
+  CheckCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useNavigate } from 'react-router-dom'
 import { knownHosts, hosts } from '../lib/api'
 import type { KnownHost } from '../types'
+
+interface SnapPermissionError {
+  error: string
+  message: string
+  command: string
+  isSnapError: boolean
+}
 
 export default function KnownHosts() {
   const navigate = useNavigate()
@@ -26,6 +36,8 @@ export default function KnownHosts() {
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<KnownHost | null>(null)
   const [convertModal, setConvertModal] = useState<KnownHost | null>(null)
+  const [snapError, setSnapError] = useState<SnapPermissionError | null>(null)
+  const [copiedCommand, setCopiedCommand] = useState(false)
   const [convertForm, setConvertForm] = useState({
     label: '',
     username: 'root',
@@ -37,8 +49,30 @@ export default function KnownHosts() {
 
   const { data: knownHostsList = [], isLoading, refetch } = useQuery<KnownHost[]>({
     queryKey: ['known-hosts'],
-    queryFn: knownHosts.list,
+    queryFn: async () => {
+      try {
+        const result = await knownHosts.list()
+        setSnapError(null)
+        return result
+      } catch (err: unknown) {
+        const error = err as { response?: { status?: number; data?: SnapPermissionError } }
+        if (error.response?.status === 403 && error.response?.data?.isSnapError) {
+          setSnapError(error.response.data)
+          return []
+        }
+        throw err
+      }
+    },
   })
+
+  const copyCommand = async () => {
+    if (snapError?.command) {
+      await navigator.clipboard.writeText(snapError.command)
+      setCopiedCommand(true)
+      toast.success('Command copied to clipboard!')
+      setTimeout(() => setCopiedCommand(false), 2000)
+    }
+  }
 
   const removeMutation = useMutation({
     mutationFn: (host: string) => knownHosts.remove(host),
@@ -189,12 +223,52 @@ export default function KnownHosts() {
           </div>
         </motion.div>
 
+      {/* Snap Permission Error */}
+      {snapError && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 p-6 rounded-2xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30"
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+              <Terminal className="w-6 h-6 text-amber-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                SSH Keys Access Required
+              </h3>
+              <p className="text-gray-600 dark:text-dark-300 mb-4">
+                The app needs permission to access your SSH keys. Run this command in your terminal:
+              </p>
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-gray-900 dark:bg-dark-900 font-mono text-sm">
+                <code className="flex-1 text-green-400">{snapError.command}</code>
+                <button
+                  onClick={copyCommand}
+                  className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
+                  title="Copy command"
+                >
+                  {copiedCommand ? (
+                    <CheckCircle className="w-5 h-5 text-green-400" />
+                  ) : (
+                    <Copy className="w-5 h-5 text-gray-400 hover:text-white" />
+                  )}
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-dark-400 mt-3">
+                After running the command, click "Scan Again" to reload your known hosts.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Loading State */}
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
         </div>
-      ) : filteredHosts.length === 0 ? (
+      ) : filteredHosts.length === 0 && !snapError ? (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -213,7 +287,7 @@ export default function KnownHosts() {
             }
           </p>
         </motion.div>
-      ) : (
+      ) : filteredHosts.length > 0 && (
         /* Host Cards Grid */
         <motion.div 
           initial={{ opacity: 0 }}

@@ -1133,6 +1133,19 @@ func getKnownHosts(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode([]KnownHostEntry{})
 			return
 		}
+		// Check if this is a snap permission error
+		if os.IsPermission(err) && os.Getenv("SNAP") != "" {
+			log.Printf("Snap permission denied for %s. Run: sudo snap connect binsh:ssh-keys", knownHostsPath)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":       "snap_permission_denied",
+				"message":     "SSH keys access not connected. Please run: sudo snap connect binsh:ssh-keys",
+				"command":     "sudo snap connect binsh:ssh-keys",
+				"isSnapError": true,
+			})
+			return
+		}
 		log.Printf("Failed to read known_hosts from %s: %v", knownHostsPath, err)
 		http.Error(w, "Failed to read known_hosts file", http.StatusInternalServerError)
 		return
