@@ -29,10 +29,15 @@ function startBackend() {
   console.log('Starting backend from:', backendPath);
 
   try {
+    // Get real home directory for snap environment
+    const realHome = process.env.SNAP_REAL_HOME || process.env.HOME || require('os').homedir();
+    
     backendProcess = spawn(backendPath, [], {
       env: {
         ...process.env,
         BINSH_PORT: PORT.toString(),
+        SNAP_REAL_HOME: realHome,
+        REAL_HOME: realHome,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

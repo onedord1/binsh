@@ -95,8 +95,12 @@
         "wayland",
         "browser-support",
         "ssh-keys",
-        "ssh-public-keys"
-      ]
+        "ssh-public-keys",
+        "personal-files"
+      ],
+      "environment": {
+        "SNAP_REAL_HOME": "$HOME"
+      }
     },
     "deb": {
       "depends": [

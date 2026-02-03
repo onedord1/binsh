@@ -42,6 +42,20 @@ var (
 	}
 )
 
+// getRealHomeDir returns the real home directory, handling snap confinement
+func getRealHomeDir() (string, error) {
+	// In snap environment, SNAP_REAL_HOME contains the real home directory
+	if snapRealHome := os.Getenv("SNAP_REAL_HOME"); snapRealHome != "" {
+		return snapRealHome, nil
+	}
+	// Also check HOME before snap modified it
+	if realHome := os.Getenv("REAL_HOME"); realHome != "" {
+		return realHome, nil
+	}
+	// Fallback to standard home directory
+	return os.UserHomeDir()
+}
+
 func init() {
 	// Initialize data directory
 	configDir, err := os.UserConfigDir()
@@ -1106,7 +1120,7 @@ func getKnownHosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := getRealHomeDir()
 	if err != nil {
 		http.Error(w, "Failed to get home directory", http.StatusInternalServerError)
 		return
@@ -1119,6 +1133,7 @@ func getKnownHosts(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode([]KnownHostEntry{})
 			return
 		}
+		log.Printf("Failed to read known_hosts from %s: %v", knownHostsPath, err)
 		http.Error(w, "Failed to read known_hosts file", http.StatusInternalServerError)
 		return
 	}
@@ -1188,7 +1203,7 @@ func removeKnownHost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	hostToRemove := vars["host"]
 
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := getRealHomeDir()
 	if err != nil {
 		http.Error(w, "Failed to get home directory", http.StatusInternalServerError)
 		return
@@ -1197,6 +1212,7 @@ func removeKnownHost(w http.ResponseWriter, r *http.Request) {
 	knownHostsPath := filepath.Join(homeDir, ".ssh", "known_hosts")
 	content, err := os.ReadFile(knownHostsPath)
 	if err != nil {
+		log.Printf("Failed to read known_hosts from %s: %v", knownHostsPath, err)
 		http.Error(w, "Failed to read known_hosts file", http.StatusInternalServerError)
 		return
 	}
@@ -1408,7 +1424,7 @@ func startPortForward(w http.ResponseWriter, r *http.Request) {
 			// Read key from file
 			expanded := host.SSHKeyPath
 			if strings.HasPrefix(expanded, "~") {
-				home, _ := os.UserHomeDir()
+				home, _ := getRealHomeDir()
 				expanded = filepath.Join(home, expanded[1:])
 			}
 			if data, err := os.ReadFile(expanded); err == nil {
