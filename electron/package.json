@@ -86,21 +86,10 @@
       "description": "binsh is a powerful, feature-rich SSH client for DevOps engineers, system administrators, and developers.",
       "plugs": [
         "default",
-        "network",
         "network-bind",
-        "home",
-        "desktop",
-        "desktop-legacy",
-        "x11",
-        "wayland",
-        "browser-support",
         "ssh-keys",
-        "ssh-public-keys",
-        "personal-files"
-      ],
-      "environment": {
-        "SNAP_REAL_HOME": "$HOME"
-      }
+        "ssh-public-keys"
+      ]
     },
     "deb": {
       "depends": [
