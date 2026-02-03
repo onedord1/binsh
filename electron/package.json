@@ -80,7 +80,7 @@
       }
     },
     "snap": {
-      "confinement": "classic",
+      "confinement": "strict",
       "grade": "stable",
       "summary": "Modern SSH Client & Server Management Platform",
       "description": "binsh is a powerful, feature-rich SSH client for DevOps engineers, system administrators, and developers.",
