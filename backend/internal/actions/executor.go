@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -42,6 +43,7 @@ type HostConfig struct {
 	Username   string
 	Password   string
 	KeyPath    string
+	PrivateKey string // inline private key contents
 	Passphrase string
 }
 
@@ -1260,6 +1262,8 @@ func (e *Executor) connect(host *HostConfig) (*ssh.Client, error) {
 		authMethods = append(authMethods, ssh.Password(host.Password))
 	}
 
+	// Try private key from a file path first
+	var keyLoaded bool
 	if host.KeyPath != "" {
 		keyPath := host.KeyPath
 		// Expand tilde to home directory
@@ -1278,7 +1282,26 @@ func (e *Executor) connect(host *HostConfig) (*ssh.Client, error) {
 			}
 			if err == nil {
 				authMethods = append(authMethods, ssh.PublicKeys(signer))
+				keyLoaded = true
 			}
+		}
+		// If the path can't be read (e.g. a bare filename), fall through to
+		// the inline key below.
+	}
+
+	// Try inline private key contents (fallback, or primary when no path)
+	if !keyLoaded && host.PrivateKey != "" {
+		var signer ssh.Signer
+		var err error
+		if host.Passphrase != "" {
+			signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(host.PrivateKey), []byte(host.Passphrase))
+		} else {
+			signer, err = ssh.ParsePrivateKey([]byte(host.PrivateKey))
+		}
+		if err == nil {
+			authMethods = append(authMethods, ssh.PublicKeys(signer))
+		} else {
+			return nil, fmt.Errorf("failed to parse inline private key: %w", err)
 		}
 	}
 
@@ -1290,6 +1313,7 @@ func (e *Executor) connect(host *HostConfig) (*ssh.Client, error) {
 		User:            host.Username,
 		Auth:            authMethods,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         15 * time.Second,
 	}
 
 	addr := fmt.Sprintf("%s:%d", host.Address, host.Port)

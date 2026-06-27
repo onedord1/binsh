@@ -40,6 +40,7 @@ type Host struct {
 	SSHKey          string   `json:"ssh_key,omitempty"`
 	Passphrase      string   `json:"passphrase,omitempty"`
 	GroupID         string   `json:"group_id,omitempty"`
+	CloudInstanceID string   `json:"cloud_instance_id,omitempty"`
 	Tags            []string `json:"tags,omitempty"`
 	StartupCommand  string   `json:"startup_command,omitempty"`
 	ProxyID         string   `json:"proxy_id,omitempty"`

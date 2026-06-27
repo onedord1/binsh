@@ -126,7 +126,12 @@ export default function KnownHosts() {
     })
   }
 
+  const isHashedHost = (host: string) => host.startsWith('|1|')
+
   const getDisplayHost = (host: string, port: number) => {
+    if (isHashedHost(host)) {
+      return 'Hashed host'
+    }
     if (port !== 22) {
       return `[${host}]:${port}`
     }
@@ -299,6 +304,7 @@ export default function KnownHosts() {
             {filteredHosts.map((host, index) => {
               const uniqueKey = getUniqueKey(host)
               const gradientColor = getKeyTypeColor(host.key_type)
+              const isHashed = isHashedHost(host.host)
               
               return (
                 <motion.div
@@ -328,7 +334,12 @@ export default function KnownHosts() {
                           </p>
                         </div>
                         
-                        {/* Menu Button */}
+                        {/* Menu Button (not available for hashed entries) */}
+                        {isHashed ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-gray-100 dark:bg-dark-700 text-gray-500 dark:text-dark-400 flex-shrink-0">
+                            Hashed
+                          </span>
+                        ) : (
                         <div className="relative">
                           <button
                             onClick={(e) => {
@@ -384,6 +395,7 @@ export default function KnownHosts() {
                             )}
                           </AnimatePresence>
                         </div>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -1,8 +1,12 @@
 import { motion } from 'framer-motion'
-import { X } from 'lucide-react'
+import { X, Check } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import HostForm from './forms/HostForm'
 import GroupForm from './forms/GroupForm'
+
+// Shared id linking the header Save button to the active form so the button
+// can live in the header (next to the close button) while the form is a child.
+export const SIDE_PANEL_FORM_ID = 'side-panel-form'
 
 export default function SidePanel() {
   const { sidePanel, closeSidePanel } = useAppStore()
@@ -43,12 +47,23 @@ export default function SidePanel() {
                 : 'Organize your hosts into groups'}
             </p>
           </div>
-          <button
-            onClick={closeSidePanel}
-            className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-dark-700/50 text-gray-400 dark:text-dark-400 hover:text-gray-900 dark:hover:text-white transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              form={SIDE_PANEL_FORM_ID}
+              title="Save"
+              className="p-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white shadow-lg shadow-primary-500/25 transition-colors"
+            >
+              <Check className="w-5 h-5" />
+            </button>
+            <button
+              onClick={closeSidePanel}
+              title="Close"
+              className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-dark-700/50 text-gray-400 dark:text-dark-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">

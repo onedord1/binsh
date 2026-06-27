@@ -905,38 +905,107 @@ func syncCloudHosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create hosts from instances
-	var syncedCount int
+	// Reconcile hosts in this group with the live set of cloud instances.
+	// This ensures terminated instances are removed and new ones are added,
+	// so the group always reflects the current state of the cloud account.
+
+	// Index live instances by ID for fast lookup.
+	instByID := make(map[string]cloud.Instance)
 	for _, inst := range instances {
-		// Simple check for existing hosts by address
-		hosts, _ := store.GetHosts(userID)
-		exists := false
-		for _, h := range hosts {
-			if h.Address == inst.IPAddress && h.GroupID == group.ID {
-				exists = true
-				break
+		instByID[inst.ID] = inst
+	}
+
+	// hostHasTag reports whether a host carries a given tag (used to identify
+	// hosts created by an earlier sync that predates CloudInstanceID tracking).
+	hostHasTag := func(h storage.Host, tag string) bool {
+		for _, t := range h.Tags {
+			if t == tag {
+				return true
+			}
+		}
+		return false
+	}
+
+	allHosts, err := store.GetHosts(userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var addedCount, updatedCount, removedCount int
+	haveInstance := make(map[string]bool)
+
+	// Step 1: reconcile existing hosts that belong to this group.
+	for _, h := range allHosts {
+		if h.GroupID != group.ID {
+			continue
+		}
+
+		// Determine which live instance (if any) this host maps to.
+		instID := h.CloudInstanceID
+		if instID == "" {
+			// Adopt hosts created by older syncs (no CloudInstanceID) by
+			// matching their address to a live instance IP.
+			for _, inst := range instances {
+				if inst.IPAddress != "" && inst.IPAddress == h.Address {
+					instID = inst.ID
+					break
+				}
 			}
 		}
 
-		if !exists {
-			host := &storage.Host{
-				Label:      inst.Name,
-				Address:    inst.IPAddress,
-				Port:       22,
-				Username:   "root", // default
-				AuthMethod: "key",
-				GroupID:    group.ID,
-				Tags:       []string{inst.Provider, inst.Region},
-			}
-			store.CreateHost(host, userID)
-			syncedCount++
+		// A host is considered cloud-managed if it was tracked with an
+		// instance ID, or it was tagged with this group's provider by a
+		// previous sync.
+		cloudManaged := h.CloudInstanceID != "" || hostHasTag(h, group.CloudProvider)
+
+		if inst, ok := instByID[instID]; ok && instID != "" {
+			// Instance still exists: refresh details and keep it.
+			updated := h
+			updated.CloudInstanceID = inst.ID
+			updated.Label = inst.Name
+			updated.Address = inst.IPAddress
+			updated.Tags = []string{inst.Provider, inst.Region}
+			store.UpdateHost(&updated, userID)
+			haveInstance[inst.ID] = true
+			updatedCount++
+			continue
 		}
+
+		// No matching live instance. Remove it only if it's cloud-managed,
+		// leaving manually-added hosts untouched.
+		if cloudManaged {
+			store.DeleteHost(h.ID, userID)
+			removedCount++
+		}
+	}
+
+	// Step 2: add hosts for live instances that don't have one yet.
+	for _, inst := range instances {
+		if haveInstance[inst.ID] {
+			continue
+		}
+		host := &storage.Host{
+			Label:           inst.Name,
+			Address:         inst.IPAddress,
+			Port:            22,
+			Username:        "root", // default
+			AuthMethod:      "key",
+			GroupID:         group.ID,
+			CloudInstanceID: inst.ID,
+			Tags:            []string{inst.Provider, inst.Region},
+		}
+		store.CreateHost(host, userID)
+		addedCount++
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "ok",
-		"synced":  syncedCount,
-		"message": fmt.Sprintf("Successfully synced %d hosts from %s", syncedCount, group.CloudProvider),
+		"synced":  addedCount,
+		"added":   addedCount,
+		"updated": updatedCount,
+		"removed": removedCount,
+		"message": fmt.Sprintf("Synced from %s: %d added, %d updated, %d removed", group.CloudProvider, addedCount, updatedCount, removedCount),
 	})
 }
 
@@ -1165,13 +1234,30 @@ func getKnownHosts(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// Handle optional markers like "@cert-authority" or "@revoked"
+		// which shift the host/key fields by one position.
+		if strings.HasPrefix(parts[0], "@") {
+			if len(parts) < 4 {
+				continue
+			}
+			parts = parts[1:]
+		}
+
 		hostPart := parts[0]
 		keyType := parts[1]
 		publicKey := parts[2]
 
-		// Handle hashed hosts (starting with |1|)
+		// Handle hashed hosts (starting with |1|). The hostname can't be
+		// reversed, but we still surface the entry so the file is detected
+		// (OpenSSH hashes known_hosts by default on many distros).
 		if strings.HasPrefix(hostPart, "|1|") {
-			continue // Skip hashed entries as we can't display them
+			entries = append(entries, KnownHostEntry{
+				Host:      hostPart,
+				Port:      22,
+				KeyType:   keyType,
+				PublicKey: publicKey,
+			})
+			continue
 		}
 
 		// Parse host and port
@@ -2852,6 +2938,7 @@ func getHostConfig(hostID, userID string) (*actions.HostConfig, error) {
 		Username:   host.Username,
 		Password:   password,
 		KeyPath:    host.SSHKeyPath,
+		PrivateKey: host.SSHKey,
 		Passphrase: passphrase,
 	}, nil
 }

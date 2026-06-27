@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAppStore } from '../../stores/appStore'
+import { SIDE_PANEL_FORM_ID } from '../SidePanel'
 import { groups } from '../../lib/api'
 import type { Group } from '../../types'
 
@@ -152,7 +153,13 @@ export default function GroupForm() {
   const isLoading = createMutation.isPending || updateMutation.isPending
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id={SIDE_PANEL_FORM_ID} onSubmit={handleSubmit} className="space-y-6">
+      {isLoading && (
+        <div className="flex items-center gap-2 text-sm text-primary-500">
+          <div className="w-4 h-4 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+          Saving...
+        </div>
+      )}
       <div className="space-y-4">
         <div className="p-4 rounded-xl bg-gradient-to-br from-accent-purple/10 to-accent-pink/10 dark:from-accent-purple/20 dark:to-accent-pink/20 border border-accent-purple/20">
           <div className="flex items-center gap-3 mb-4">
@@ -592,30 +599,6 @@ export default function GroupForm() {
             )}
           </motion.div>
         )}
-      </div>
-
-      <div className="flex gap-3 pt-4">
-        <button
-          type="button"
-          onClick={closeSidePanel}
-          className="btn btn-secondary flex-1"
-          disabled={isLoading}
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="btn btn-primary flex-1"
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : isEdit ? (
-            'Save Changes'
-          ) : (
-            'Create Group'
-          )}
-        </button>
       </div>
     </form>
   )

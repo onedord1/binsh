@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAppStore } from '../../stores/appStore'
+import { SIDE_PANEL_FORM_ID } from '../SidePanel'
 import { hosts, groups, keychain } from '../../lib/api'
 import type { Host, Group, Keychain } from '../../types'
 
@@ -139,7 +140,13 @@ export default function HostForm() {
   const isLoading = createMutation.isPending || updateMutation.isPending
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id={SIDE_PANEL_FORM_ID} onSubmit={handleSubmit} className="space-y-6">
+      {isLoading && (
+        <div className="flex items-center gap-2 text-sm text-primary-500">
+          <div className="w-4 h-4 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+          Saving...
+        </div>
+      )}
       <div className="space-y-4">
         <div className="p-4 rounded-xl bg-gradient-to-br from-primary-500/10 to-accent-cyan/10 dark:from-primary-500/20 dark:to-accent-cyan/20 border border-primary-500/20">
           <div className="flex items-center gap-3 mb-4">
@@ -509,30 +516,6 @@ export default function HostForm() {
           </div>
         </motion.div>
       )}
-
-      <div className="flex gap-3 pt-4">
-        <button
-          type="button"
-          onClick={closeSidePanel}
-          className="btn btn-secondary flex-1"
-          disabled={isLoading}
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="btn btn-primary flex-1"
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : isEdit ? (
-            'Save Changes'
-          ) : (
-            'Create Host'
-          )}
-        </button>
-      </div>
     </form>
   )
 }
